@@ -8,7 +8,7 @@ import {
 } from './analyse.js';
 import {
   FONDAMENTAUX, RESSOURCES, RESULTATS_BALLE, PRISES,
-  EXPLICATIONS, CHAINES_VIDEO, videoYouTube,
+  EXPLICATIONS, CHAINES_VIDEO, videoYouTube, videoConstat,
 } from './knowledge.js';
 import { analyserAvecClaude, poserQuestion } from './ai.js';
 import {
@@ -303,11 +303,10 @@ function carteConstat(c) {
   node.appendChild(el('h4', null, `${echapper(c.titre)}${badge}`));
   node.appendChild(el('p', null, echapper(c.detail)));
   if (c.exo) node.appendChild(el('p', 'exo', `<strong>Exercice :</strong> ${echapper(c.exo)}`));
-  // Un défaut nommé se corrige mieux en le voyant faire : on propose la vidéo correspondante.
-  if (c.niveau === 'priorite' || c.niveau === 'corriger') {
-    node.appendChild(lienVideo(`tennis ${c.coup || ''} ${c.titre} correction exercice`,
-      'Voir des vidéos sur ce défaut'));
-  }
+  // Un défaut nommé se corrige mieux en le voyant faire — mais seulement si une recherche
+  // vidéo pertinente existe pour lui : mieux vaut pas de lien qu'un lien hors sujet.
+  const v = videoConstat(c.titre);
+  if (v) node.appendChild(lienVideo(v.requete, 'Voir des vidéos sur ce point'));
   return node;
 }
 

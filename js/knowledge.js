@@ -24,10 +24,10 @@ export const FONDAMENTAUX = [
       "Fin de geste coupée : la raquette s'arrête à l'impact.",
     ],
     videos: [
-      { titre: "Le geste complet au ralenti", requete: "coup droit tennis technique ralenti explication" },
-      { titre: "Préparation et rotation des épaules", requete: "tennis forehand unit turn shoulder rotation drill" },
-      { titre: "Trouver le bon point d'impact", requete: "tennis forehand contact point in front drill" },
-      { titre: "Finir son geste (accompagnement)", requete: "tennis forehand follow through finish drill" },
+      { titre: "Le coup droit, les bases", requete: "coup droit tennis technique de base" },
+      { titre: "Préparer tôt : tourner les épaules", requete: "préparation coup droit tennis rotation épaules" },
+      { titre: "Où frapper la balle : le point d'impact", requete: "point d'impact coup droit tennis" },
+      { titre: "Finir son geste", requete: "finir son geste tennis coup droit" },
     ],
   },
   {
@@ -48,10 +48,10 @@ export const FONDAMENTAUX = [
       "Buste qui recule au lieu d'avancer, poids sur la jambe arrière.",
     ],
     videos: [
-      { titre: "Revers à deux mains, les bases", requete: "revers deux mains tennis technique ralenti" },
-      { titre: "Revers à une main, les bases", requete: "revers une main tennis technique ralenti" },
-      { titre: "Ne pas ouvrir les épaules trop tôt", requete: "tennis backhand shoulder rotation stay sideways drill" },
-      { titre: "Revers qui part dans le filet : que faire", requete: "tennis backhand hitting into net fix drill" },
+      { titre: "Revers à deux mains, les bases", requete: "revers deux mains tennis technique" },
+      { titre: "Revers à une main, les bases", requete: "revers une main tennis technique" },
+      { titre: "Quand le revers part dans le filet", requete: "revers tennis dans le filet correction" },
+      { titre: "Garder les épaules fermées", requete: "rotation des épaules revers tennis" },
     ],
   },
   {
@@ -73,10 +73,10 @@ export const FONDAMENTAUX = [
       "Buste qui s'affaisse (« banane ») → douleurs lombaires et perte de puissance.",
     ],
     videos: [
-      { titre: "Le service décortiqué du début à la fin", requete: "service tennis technique complète ralenti explication" },
-      { titre: "Un lancer de balle régulier", requete: "tennis serve ball toss consistency drill" },
-      { titre: "Position armée et pronation", requete: "tennis serve trophy position pronation drill" },
-      { titre: "Flexion de jambes et extension", requete: "tennis serve leg drive knee bend drill" },
+      { titre: "Le service, les bases", requete: "service tennis technique de base" },
+      { titre: "Un lancer de balle régulier", requete: "lancer de balle service tennis" },
+      { titre: "La position armée", requete: "position armée service tennis" },
+      { titre: "La pronation du bras", requete: "pronation service tennis" },
     ],
   },
   {
@@ -96,9 +96,9 @@ export const FONDAMENTAUX = [
       "Rester à plat sur les talons au lieu d'avancer.",
     ],
     videos: [
-      { titre: "Volée : bloquer plutôt que swinguer", requete: "tennis volley technique short punch drill" },
-      { titre: "Le jeu de jambes de la volée", requete: "tennis volley footwork split step drill" },
-      { titre: "Volée basse et volée haute", requete: "tennis low volley high volley technique" },
+      { titre: "La volée, les bases", requete: "volée tennis technique" },
+      { titre: "La volée basse", requete: "volée basse tennis" },
+      { titre: "Le jeu de jambes de la volée", requete: "appuis et déplacements volée tennis" },
     ],
   },
   {
@@ -117,9 +117,9 @@ export const FONDAMENTAUX = [
       "Rester planté après la frappe pour admirer son coup.",
     ],
     videos: [
-      { titre: "Le split-step expliqué", requete: "tennis split step timing drill explication" },
-      { titre: "Les appuis en fond de court", requete: "tennis footwork baseline open stance drill" },
-      { titre: "Récupérer sa place après la frappe", requete: "tennis recovery step after shot drill" },
+      { titre: "Le split-step", requete: "split step tennis" },
+      { titre: "Les appuis en fond de court", requete: "jeu de jambes tennis fond de court" },
+      { titre: "Se replacer après la frappe", requete: "replacement après la frappe tennis" },
     ],
   },
 ];
@@ -132,13 +132,46 @@ export const FONDAMENTAUX = [
 const RECHERCHE_YT = 'https://www.youtube.com/results?search_query=';
 export const videoYouTube = (requete) => RECHERCHE_YT + encodeURIComponent(requete);
 
+/**
+ * Une requête choisie à la main pour chaque défaut que le moteur sait nommer.
+ * Fabriquer la recherche en collant le titre du constat donnait des résultats hors sujet :
+ * une recherche utile est courte et formulée comme un joueur la taperait.
+ * Les constats qui ne parlent pas de technique (main mal déclarée, détection partielle…)
+ * ne sont volontairement pas dans cette table : aucune vidéo n'y répondrait.
+ */
+const VIDEOS_CONSTAT = {
+  'Bras de lancer qui retombe trop tôt': 'bras de lancer service tennis',
+  'Rotation du tronc insuffisante': 'rotation des épaules tennis préparation',
+  'Jambes trop tendues': 'flexion des jambes tennis coup droit',
+  'Flexion excessive / position trop basse': "position d'attente tennis équilibre",
+  'Impact trop bas': 'prendre la balle tôt tennis',
+  'Impact très haut': 'jouer les balles hautes tennis',
+  'Impact trop près du corps': 'distance corps balle tennis coup droit',
+  'Service frappé bras plié': 'service tennis bras tendu point haut',
+  'Bras trop verrouillé': 'relâchement du bras tennis',
+  'Geste coupé après la frappe': 'finir son geste tennis coup droit',
+  'Volée trop swinguée': 'volée tennis geste court',
+  'Bassin qui dérive à la frappe': 'ancrage des appuis à la frappe tennis',
+  "Tête qui bouge à l'impact": "regarder la balle à l'impact tennis",
+  'Pas de split-step visible': 'split step tennis',
+  'Frappes trop irrégulières': 'régularité au tennis exercice',
+  'Bras libre collé au corps': 'bras libre tennis équilibre coup droit',
+};
+
+/** Requête vidéo pour un défaut, ou null s'il n'y a rien de pertinent à montrer. */
+export function videoConstat(titre) {
+  const req = VIDEOS_CONSTAT[titre];
+  return req ? { requete: req } : null;
+}
+
 /** Chaînes d'enseignement reconnues, à parcourir quand on veut creuser un thème. */
 export const CHAINES_VIDEO = [
+  { nom: 'Tuto Tennis Technique — FFT', pourquoi: "La série officielle de la Fédération Française de Tennis, avec Paul-Henri Mathieu. En français.", requete: 'Tuto Tennis Technique FFT Paul-Henri Mathieu' },
   { nom: 'Intuitive Tennis', pourquoi: 'Technique décortiquée au ralenti, très pédagogique (anglais).', requete: 'Intuitive Tennis' },
   { nom: 'Top Tennis Training', pourquoi: 'Analyses des pros image par image et exercices concrets (anglais).', requete: 'Top Tennis Training' },
   { nom: 'Essential Tennis', pourquoi: 'Corrections de défauts fréquents chez le joueur de club (anglais).', requete: 'Essential Tennis' },
   { nom: 'Feel Tennis Instruction', pourquoi: 'Approche par les sensations, utile quand le geste est crispé (anglais).', requete: 'Feel Tennis Instruction' },
-  { nom: 'Tennis Legend / coachs francophones', pourquoi: "Cours en français, du débutant au joueur classé.", requete: 'cours de tennis technique français coach' },
+  { nom: 'Cours de tennis en français', pourquoi: "Les chaînes francophones d'enseignement, du débutant au joueur classé.", requete: 'cours de tennis technique français' },
 ];
 
 export const RESSOURCES = [
@@ -189,7 +222,7 @@ export const EXPLICATIONS = [
     tropHaut: "Tu prends la balle très haut, presque au-dessus de l'épaule : le geste devient un bras seul. " +
       "Avance d'un pas pour prendre la balle plus tôt, avant qu'elle ne redescende trop haut.",
     exercice: "Poser un plot ou un sac à hauteur de hanche et frapper 20 balles en visant ce niveau au contact.",
-    requeteVideo: 'tennis contact point height waist level drill',
+    requeteVideo: "point d'impact tennis coup droit hauteur",
   },
   {
     cle: 'coudeImpact', seuil: 'coudeImpact', decimales: 0, unite: '°',
@@ -203,7 +236,7 @@ export const EXPLICATIONS = [
     tropHaut: "Ton bras est complètement verrouillé : le coude ne peut plus absorber le choc, l'épaule prend tout. " +
       "Garde un léger pli au contact.",
     exercice: "Frapper 15 balles en gardant une balle de mousse coincée entre le bras et le buste : elle doit tomber au contact, pas avant.",
-    requeteVideo: 'tennis forehand arm extension contact point spacing drill',
+    requeteVideo: "distance corps balle tennis coup droit",
   },
   {
     cle: 'rotationEpaules', seuil: 'rotationEpaules', decimales: 2, unite: '', basEstMieux: true,
@@ -218,7 +251,7 @@ export const EXPLICATIONS = [
       "en pointant ta main libre vers elle.",
     tropBas: "Rien à corriger : plus le chiffre est bas, plus la rotation est marquée.",
     exercice: "Sans balle : tourner les épaules jusqu'à voir le fond de court derrière soi, puis dérouler. 3 séries de 10.",
-    requeteVideo: 'tennis unit turn shoulder rotation coil drill',
+    requeteVideo: "rotation des épaules tennis préparation",
   },
   {
     cle: 'flexionGenou', seuil: 'flexionGenou', decimales: 0, unite: '°',
@@ -232,7 +265,7 @@ export const EXPLICATIONS = [
       "Descends franchement avant chaque frappe.",
     tropBas: "Tu descends très bas : c'est rarement un défaut, sauf si tu n'arrives plus à remonter à temps.",
     exercice: "Échanges avec consigne « toucher le genou du sol du regard » : à chaque frappe, fléchir jusqu'à sentir la cuisse travailler.",
-    requeteVideo: 'tennis knee bend leg drive groundstroke drill',
+    requeteVideo: "flexion des jambes tennis coup droit",
   },
   {
     cle: 'accompagnement', seuil: 'accompagnement', decimales: 1, unite: '',
@@ -245,7 +278,7 @@ export const EXPLICATIONS = [
     tropBas: "Ton geste s'arrête au contact. Termine chaque frappe au-dessus de l'épaule opposée, même à l'échauffement.",
     tropHaut: "Geste très ample : bien pour la puissance, à surveiller seulement si tu es souvent en retard sur la balle suivante.",
     exercice: "Frapper 20 balles en tenant la fin de geste 2 secondes avant de revenir en position d'attente.",
-    requeteVideo: 'tennis follow through finish over shoulder drill',
+    requeteVideo: "finir son geste tennis coup droit",
   },
   {
     cle: 'deplacementTete', seuil: 'stabiliteTete', decimales: 2, unite: '', basEstMieux: true,
@@ -258,7 +291,7 @@ export const EXPLICATIONS = [
     tropHaut: "Ta tête suit le geste : garde le regard sur le point de contact une fraction de seconde après la frappe.",
     tropBas: "Rien à corriger : plus le chiffre est bas, plus la tête est stable.",
     exercice: "Frapper 15 balles en gardant le menton pointé vers le point de contact jusqu'à la fin du geste.",
-    requeteVideo: 'tennis keep head still at contact watch the ball drill',
+    requeteVideo: "regarder la balle à l'impact tennis",
   },
   {
     cle: 'deplacementBassin', seuil: 'stabiliteBassin', decimales: 2, unite: '', basEstMieux: true,
@@ -271,7 +304,7 @@ export const EXPLICATIONS = [
     tropHaut: "Tu frappes encore en mouvement. Pose ton appui avant de déclencher le geste, quitte à jouer plus court.",
     tropBas: "Rien à corriger : c'est le signe d'une base stable.",
     exercice: "Échanges lents avec consigne : arrêter complètement les pieds avant de lancer le geste.",
-    requeteVideo: 'tennis balance stable base groundstroke footwork drill',
+    requeteVideo: "ancrage des appuis à la frappe tennis",
   },
   {
     cle: 'vitesse', seuil: null, decimales: 1, unite: '',
@@ -281,7 +314,7 @@ export const EXPLICATIONS = [
     pourquoi: "Elle sert surtout à comparer tes frappes entre elles : une frappe nettement plus lente que les " +
       "autres est souvent une frappe subie, en retard. Il n'y a pas de bonne valeur absolue.",
     exercice: "Compare cette valeur d'une frappe à l'autre dans l'onglet « Coups détectés » plutôt qu'à une référence.",
-    requeteVideo: 'tennis racquet head speed acceleration drill',
+    requeteVideo: "vitesse de raquette tennis accélération",
   },
 ];
 

@@ -47,9 +47,12 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
     (« geste coupé au contact : tu freines avant la balle ») et la zone à viser.
 12. **Mesures expliquées** : une fiche dépliable par mesure — ce que ça mesure, l'échelle, pourquoi
     ça compte, le diagnostic personnel, un exercice, une jauge situant ta valeur dans la zone visée.
-13. **Vidéos** : chaque fiche technique, chaque défaut relevé et chaque mesure renvoie vers une
-    recherche YouTube ciblée. On ne pointe jamais une URL de vidéo précise : elle finit toujours par
-    mourir, alors qu'une recherche reste valable et remonte ce qui se fait de mieux au moment du clic.
+13. **Vidéos** : chaque fiche technique, chaque mesure et chaque défaut relevé renvoie vers une
+    recherche YouTube **écrite à la main**, en français, formulée comme un joueur la taperait
+    (`VIDEOS_CONSTAT` dans `js/knowledge.js`). Les défauts qui n'ont pas de contrepartie vidéo utile
+    — main mal déclarée, détection partielle — n'ont volontairement pas de lien. On ne pointe jamais
+    une URL de vidéo précise : elle finit toujours par mourir, alors qu'une recherche reste valable
+    et remonte ce qui se fait de mieux au moment du clic.
 14. **Menu** en quatre entrées (Analyser / Mes analyses / Questions / Apprendre), visibles sans
     défilement même sur un petit écran.
 
