@@ -1,5 +1,5 @@
 /**
- * Assemble `dial-tennis.html` : une copie autonome de l'app, en un seul fichier,
+ * Assemble `cadence.html` : une copie autonome de l'app, en un seul fichier,
  * pensée pour être ouverte d'un double-clic depuis l'ordinateur.
  *
  * Lancer :  node build-fichier-unique.mjs
@@ -45,5 +45,5 @@ if (html.includes('href="css/') || html.includes('src="js/')) {
   throw new Error('Une ressource externe est restée liée : le fichier ne serait pas autonome.');
 }
 
-writeFileSync(join(racine, 'dial-tennis.html'), html);
-console.log(`dial-tennis.html écrit (${Math.round(html.length / 1024)} Ko)`);
+writeFileSync(join(racine, 'cadence.html'), html);
+console.log(`cadence.html écrit (${Math.round(html.length / 1024)} Ko)`);

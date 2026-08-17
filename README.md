@@ -1,4 +1,4 @@
-# Dial Tennis — analyse vidéo de ton jeu
+# Cadence — analyse vidéo de ton jeu
 
 Web app **100 % statique** (HTML/CSS/JS, aucun build, aucun serveur) : tu envoies une vidéo de toi
 en train de jouer, et tu obtiens une analyse technique — ce qui fonctionne, ce qu'il faut corriger,
@@ -41,7 +41,7 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
 
 ## Utilisation
 
-**Le plus simple : télécharge `dial-tennis.html` et ouvre-le d'un double-clic.** Ce fichier
+**Le plus simple : télécharge `cadence.html` et ouvre-le d'un double-clic.** Ce fichier
 contient toute l'app ; il a juste besoin d'une connexion internet au premier lancement pour
 récupérer le modèle de détection de posture.
 
@@ -57,12 +57,19 @@ C'est la seule façon de l'utiliser depuis un téléphone.
 
 ### Régénérer le fichier unique
 
-`dial-tennis.html` est produit à partir de `index.html`, `css/` et `js/`. Après toute
+`cadence.html` est produit à partir de `index.html`, `css/` et `js/`. Après toute
 modification :
 
 ```bash
 node build-fichier-unique.mjs
 ```
+
+### Changer le nom de l'app
+
+Le nom vit dans une seule constante, `NOM_APP`, en haut de `js/app.js` : elle alimente le titre
+de la page, l'en-tête et le nom du fichier de rapport exporté. Les clés de `localStorage` gardent
+volontairement leur ancien préfixe pour ne pas effacer l'historique déjà enregistré chez les
+utilisateurs.
 
 ### Analyse IA (optionnelle)
 
@@ -86,9 +93,9 @@ Modèle utilisé : `claude-opus-5`, appelé directement depuis le navigateur
 
 ```
 index.html          Interface et étapes
-dial-tennis.html    Copie autonome en un seul fichier (générée, ne pas éditer à la main)
-build-fichier-unique.mjs  Génère dial-tennis.html depuis les sources
-css/styles.css      Thème sombre, responsive
+cadence.html    Copie autonome en un seul fichier (générée, ne pas éditer à la main)
+build-fichier-unique.mjs  Génère cadence.html depuis les sources
+css/styles.css      Thème clair, contrastes AA, responsive
 js/pose.js          Chargement MediaPipe, échantillonnage vidéo, géométrie
 js/analyse.js       Séries temporelles, détection de frappes, mesures, moteur de règles
 js/knowledge.js     Référentiel technique + seuils de coaching

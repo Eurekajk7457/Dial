@@ -143,7 +143,7 @@ export function tracerCourbe(points, mesure, { largeur = 640, hauteur = 240 } = 
     const basBande = y(Math.max(bande[0], min));
     morceaux.push(
       `<rect x="${marge.gauche}" y="${hautBande.toFixed(1)}" width="${l}" ` +
-      `height="${Math.max(0, basBande - hautBande).toFixed(1)}" fill="#7bd389" opacity="0.12"/>`,
+      `height="${Math.max(0, basBande - hautBande).toFixed(1)}" fill="#1f7a4d" opacity="0.13"/>`,
       `<text x="${marge.gauche + l - 4}" y="${(hautBande + 12).toFixed(1)}" text-anchor="end" ` +
       `class="c-zone">zone visée</text>`,
     );
@@ -161,13 +161,13 @@ export function tracerCourbe(points, mesure, { largeur = 640, hauteur = 240 } = 
 
   // Ligne
   const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.valeur).toFixed(1)}`).join(' ');
-  morceaux.push(`<path d="${d}" fill="none" stroke="#d8f24a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
+  morceaux.push(`<path d="${d}" fill="none" stroke="#0f6b52" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
 
   // Points, avec un liseré de la couleur du fond pour rester lisibles quand ils se chevauchent
   points.forEach((p, i) => {
     morceaux.push(
       `<circle cx="${x(i).toFixed(1)}" cy="${y(p.valeur).toFixed(1)}" r="4.5" ` +
-      `fill="#d8f24a" stroke="#161b23" stroke-width="2"><title>${esc(dateCourte(p.date))} — ${esc(fmt(p.valeur))}</title></circle>`,
+      `fill="#0f6b52" stroke="#ffffff" stroke-width="2"><title>${esc(dateCourte(p.date))} — ${esc(fmt(p.valeur))}</title></circle>`,
     );
   });
 

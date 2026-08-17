@@ -11,6 +11,13 @@ import {
   serie, tracerCourbe, commenterEvolution, MESURES_SUIVIES,
 } from './historique.js';
 
+/**
+ * Le nom de l'app, à un seul endroit : le changer ici suffit — il est réinjecté
+ * dans le titre de la page, l'en-tête et le nom du fichier de rapport.
+ * (Les clés de stockage gardent leur ancien nom pour ne pas perdre l'historique.)
+ */
+const NOM_APP = 'Cadence';
+
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, html) => {
   const n = document.createElement(tag);
@@ -117,25 +124,37 @@ function dimensionnerOverlay() {
 }
 window.addEventListener('resize', dimensionnerOverlay);
 
+const ARTICULATIONS = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+
+/**
+ * Le squelette est tracé deux fois : un contour sombre en dessous, puis le trait
+ * clair par-dessus. Ainsi il reste lisible sur un fond de court clair comme sur
+ * un mur sombre, sans dépendre du thème de la page.
+ */
 function dessinerSquelette(ctx, pts, w, h, { epaisseur = 3, couleur = '#d8f24a' } = {}) {
-  ctx.lineWidth = epaisseur;
-  ctx.strokeStyle = couleur;
-  ctx.fillStyle = couleur;
-  for (const [a, b] of SQUELETTE) {
-    const pa = pts[a], pb = pts[b];
-    if (!pa || !pb) continue;
-    ctx.beginPath();
-    ctx.moveTo(pa.x * w, pa.y * h);
-    ctx.lineTo(pb.x * w, pb.y * h);
-    ctx.stroke();
-  }
-  for (const i of [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]) {
-    const p = pts[i];
-    if (!p) continue;
-    ctx.beginPath();
-    ctx.arc(p.x * w, p.y * h, epaisseur + 0.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  const passe = (largeur, teinte, rayon) => {
+    ctx.lineWidth = largeur;
+    ctx.strokeStyle = teinte;
+    ctx.fillStyle = teinte;
+    ctx.lineCap = 'round';
+    for (const [a, b] of SQUELETTE) {
+      const pa = pts[a], pb = pts[b];
+      if (!pa || !pb) continue;
+      ctx.beginPath();
+      ctx.moveTo(pa.x * w, pa.y * h);
+      ctx.lineTo(pb.x * w, pb.y * h);
+      ctx.stroke();
+    }
+    for (const i of ARTICULATIONS) {
+      const p = pts[i];
+      if (!p) continue;
+      ctx.beginPath();
+      ctx.arc(p.x * w, p.y * h, rayon, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  };
+  passe(epaisseur + 2.5, 'rgba(10, 22, 18, 0.55)', epaisseur + 1.8);
+  passe(epaisseur, couleur, epaisseur + 0.5);
 }
 
 function rafraichirOverlay() {
@@ -329,7 +348,7 @@ function peindreFrame(cv, frame) {
     img.onerror = squelette;
     img.src = frame.vignette;
   } else {
-    ctx.fillStyle = '#11151c';
+    ctx.fillStyle = '#e9ede9';   // même gris que les surfaces creuses du thème clair
     ctx.fillRect(0, 0, cv.width, cv.height);
     squelette();
   }
@@ -607,7 +626,7 @@ function rendreProgression() {
 
 function rapportTexte(a) {
   const lignes = [
-    'DIAL TENNIS — RAPPORT D\'ANALYSE',
+    `${NOM_APP.toUpperCase()} — RAPPORT D'ANALYSE`,
     dateLongue(new Date().toISOString()),
     '',
     `Joueur : ${a.profil?.main === 'left' ? 'gaucher' : a.profil?.main === 'right' ? 'droitier' : 'main devinée'}` +
@@ -648,7 +667,7 @@ function exporterRapport(a) {
   const url = URL.createObjectURL(blob);
   const lien = document.createElement('a');
   lien.href = url;
-  lien.download = `dial-tennis-${new Date().toISOString().slice(0, 10)}.txt`;
+  lien.download = `${NOM_APP.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.txt`;
   document.body.appendChild(lien);
   lien.click();
   lien.remove();
@@ -910,6 +929,10 @@ $('#ia-question').addEventListener('keydown', (e) => {
 /* ------------------------------------------------------------------ */
 /* Démarrage                                                           */
 /* ------------------------------------------------------------------ */
+
+// Le nom vient de NOM_APP : le HTML n'en garde qu'une copie de secours.
+document.title = `${NOM_APP} — Analyse vidéo de ton jeu`;
+$('#nom-app').textContent = NOM_APP;
 
 $('#opt-prise').innerHTML = PRISES
   .map((p) => `<option value="${echapper(p.code)}">${echapper(p.libelle)}</option>`).join('');
