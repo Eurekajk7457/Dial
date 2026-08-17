@@ -10,6 +10,14 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
 
 ## Ce que ça fait
 
+1. Tu réponds à quelques questions (main dominante et coup filmé sont obligatoires).
+2. La posture est détectée image par image, **dans ton navigateur**.
+3. Tu obtiens un score, des constats classés par priorité, un exercice pour chacun.
+4. Tu peux dire où chaque balle est partie : l'app compare alors tes réussites à tes fautes.
+5. Chaque analyse est enregistrée : l'onglet **Progression** trace ton évolution.
+
+## En détail
+
 1. **Détection de posture image par image**, dans le navigateur (MediaPipe Pose).
    La vidéo ne quitte jamais ton appareil.
 2. **Détection automatique des frappes** à partir de la vitesse du poignet dominant, puis
@@ -21,6 +29,15 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
 5. **Analyse IA facultative** : les images clés + les mesures sont envoyées à Claude (API Anthropic)
    avec *ta* clé, avec recherche web activable pour appuyer les conseils sur des sources en ligne.
 6. **Fiches de fondamentaux** consultables hors ligne pour chaque coup.
+7. **Devenir des balles** : le joueur note chaque frappe (bonne / filet / longue / large / cadre) ;
+   l'app compare les médianes des réussites et des fautes et ne conclut qu'au-delà d'un écart net,
+   avec au moins deux frappes de chaque côté.
+8. **Régularité** : écart-type des mesures d'une frappe à l'autre — un geste reproductible compte
+   davantage qu'un geste parfait une fois sur cinq.
+9. **Suivi dans le temps** : chaque analyse est résumée dans le `localStorage` ; la vue Progression
+   trace une mesure au fil des séances, avec la zone visée en fond plutôt qu'une flèche « ça monte ».
+10. **Ralenti** image par image autour de chaque impact, et **export du rapport** en texte, à montrer
+    à un entraîneur.
 
 ## Utilisation
 
@@ -75,6 +92,7 @@ css/styles.css      Thème sombre, responsive
 js/pose.js          Chargement MediaPipe, échantillonnage vidéo, géométrie
 js/analyse.js       Séries temporelles, détection de frappes, mesures, moteur de règles
 js/knowledge.js     Référentiel technique + seuils de coaching
+js/historique.js    Suivi dans le temps (localStorage) et courbe d'évolution
 js/ai.js            Appel API Claude (vision + recherche web)
 js/app.js           Interface, rendu, squelette, onglets
 ```

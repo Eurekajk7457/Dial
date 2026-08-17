@@ -124,3 +124,34 @@ export const SEUILS = {
   // Service : flexion des genoux avant l'extension
   flexionService: { ideal: [120, 150], acceptable: [110, 162] },
 };
+
+/**
+ * Régularité : écart-type toléré d'une frappe à l'autre, pour un même coup.
+ * Format [régulier jusqu'à, acceptable jusqu'à] — au-delà, le geste n'est pas reproductible.
+ */
+export const SEUILS_REGULARITE = {
+  hauteurImpact:   { libelle: "hauteur du point d'impact", seuils: [0.14, 0.26], unite: '' },
+  coudeImpact:     { libelle: "angle du coude à l'impact", seuils: [8, 15], unite: '°' },
+  rotationEpaules: { libelle: 'rotation du buste',         seuils: [0.07, 0.13], unite: '' },
+  accompagnement:  { libelle: "amplitude d'accompagnement", seuils: [0.4, 0.75], unite: '' },
+};
+
+/** Ce que le joueur peut déclarer sur le devenir de chaque balle. */
+export const RESULTATS_BALLE = [
+  { code: '',        libelle: '—' },
+  { code: 'bonne',   libelle: 'Bonne balle' },
+  { code: 'filet',   libelle: 'Dans le filet' },
+  { code: 'longue',  libelle: 'Trop longue' },
+  { code: 'large',   libelle: 'Large / à côté' },
+  { code: 'cadre',   libelle: 'Faute de cadre' },
+];
+
+/** Prises de raquette : l'app ne peut pas les voir, mais le joueur peut les déclarer. */
+export const PRISES = [
+  { code: '', libelle: 'Je ne sais pas' },
+  { code: 'continentale', libelle: 'Continentale (marteau)' },
+  { code: 'semi-fermee', libelle: 'Semi-fermée (eastern)' },
+  { code: 'fermee', libelle: 'Fermée (semi-western)' },
+  { code: 'tres-fermee', libelle: 'Très fermée (western)' },
+  { code: 'deux-mains', libelle: 'À deux mains' },
+];

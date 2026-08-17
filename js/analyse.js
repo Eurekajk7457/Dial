@@ -4,7 +4,7 @@
  */
 
 import { P, angle, dist, milieu, inclinaisonBuste, lisser } from './pose.js';
-import { SEUILS } from './knowledge.js';
+import { SEUILS, SEUILS_REGULARITE } from './knowledge.js';
 
 /* ------------------------------------------------------------------ */
 /* Utilitaires                                                         */
@@ -20,6 +20,14 @@ export function mediane(arr) {
 }
 
 const borne = (v, min, max) => Math.min(max, Math.max(min, v));
+
+/** Écart-type d'une série, en ignorant les valeurs manquantes. */
+export function ecartType(arr) {
+  const v = finis(arr);
+  if (v.length < 2) return NaN;
+  const moy = v.reduce((s, x) => s + x, 0) / v.length;
+  return Math.sqrt(v.reduce((s, x) => s + (x - moy) ** 2, 0) / v.length);
+}
 
 /** Compare une valeur à un seuil : 'bon' | 'moyen' | 'mauvais', + sens de l'écart. */
 function evaluer(valeur, seuil) {
@@ -466,6 +474,38 @@ function reglesGroupe(type, frappes) {
     }
   }
 
+  /* --- Régularité d'une frappe à l'autre --- */
+  if (n >= 3) {
+    const mesures = Object.entries(SEUILS_REGULARITE).map(([cle, def]) => {
+      const et = ecartType(frappes.map((f) => f[cle]));
+      const [bon, acceptable] = def.seuils;
+      return {
+        cle, ...def, et,
+        etat: !Number.isFinite(et) ? 'inconnu' : et <= bon ? 'bon' : et <= acceptable ? 'moyen' : 'mauvais',
+        exces: Number.isFinite(et) ? et / bon : NaN,
+      };
+    }).filter((m) => m.etat !== 'inconnu');
+
+    const pires = mesures.filter((m) => m.etat !== 'bon').sort((a, b) => b.exces - a.exces);
+    const format = (m) => `${m.libelle} (± ${m.et < 1 ? m.et.toFixed(2) : Math.round(m.et)}${m.unite})`;
+
+    if (mesures.length && !pires.length) {
+      ajouter({
+        niveau: 'bon', titre: 'Geste reproductible',
+        detail: `Tes ${n} frappes se ressemblent beaucoup : point d'impact, bras et amplitude varient peu d'une balle à l'autre. C'est le vrai marqueur du niveau — un bon geste répété bat un geste parfait une fois sur cinq.`,
+      });
+    } else if (pires.length) {
+      const grave = pires.some((m) => m.etat === 'mauvais');
+      ajouter({
+        niveau: grave ? 'priorite' : 'corriger',
+        titre: 'Frappes trop irrégulières',
+        detail: `D'une frappe à l'autre, ce qui bouge le plus : ${pires.slice(0, 2).map(format).join(', ')}. ` +
+          `Sur ${n} frappes du même coup, ces écarts veulent dire que tu ne refais pas deux fois le même geste — c'est ce qui produit les fautes inexpliquées.`,
+        exo: `Série de 10 balles lentes, même hauteur, même cible, sans chercher la puissance : l'objectif est que les 10 se ressemblent. Compte celles qui « sonnent » pareil.`,
+      });
+    }
+  }
+
   /* --- Bras libre (coups de fond) --- */
   if (!service && !volee) {
     const bl = med('brasLibre');
@@ -522,7 +562,102 @@ function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte
 }
 
 /* ------------------------------------------------------------------ */
-/* 5. Point d'entrée                                                   */
+/* 5. Corrélation avec le devenir de la balle                          */
+/* ------------------------------------------------------------------ */
+
+const LIBELLES_RESULTAT = {
+  bonne: 'bonnes balles', filet: 'balles au filet', longue: 'balles trop longues',
+  large: 'balles larges', cadre: 'fautes de cadre',
+};
+
+/** Mesures comparables entre balles réussies et balles ratées. */
+const MESURES_COMPAREES = [
+  { cle: 'hauteurImpact', libelle: "le point d'impact", ecartMin: 0.18,
+    plus: 'plus haut', moins: 'plus bas', decimales: 2 },
+  { cle: 'coudeImpact', libelle: 'le bras', ecartMin: 9,
+    plus: 'plus tendu', moins: 'plus plié', decimales: 0, unite: '°' },
+  { cle: 'rotationEpaules', libelle: 'la rotation du buste', ecartMin: 0.09,
+    plus: 'plus faible', moins: 'plus marquée', decimales: 2 },
+  { cle: 'accompagnement', libelle: "l'accompagnement", ecartMin: 0.5,
+    plus: 'plus long', moins: 'plus court', decimales: 1 },
+  { cle: 'flexionGenou', libelle: 'les jambes', ecartMin: 10,
+    plus: 'plus tendues', moins: 'plus fléchies', decimales: 0, unite: '°' },
+  { cle: 'deplacementTete', libelle: 'la tête', ecartMin: 0.12,
+    plus: 'plus mobile', moins: 'plus stable', decimales: 2 },
+];
+
+/**
+ * Compare les frappes réussies aux frappes ratées, par type de faute.
+ * Ne conclut que sur des écarts nets et sur des effectifs suffisants : avec deux balles
+ * de chaque côté, n'importe quelle différence peut être du hasard.
+ * @param {Array} frappes frappes portant un champ `resultat`
+ */
+export function analyserResultats(frappes) {
+  const constats = [];
+  const notees = frappes.filter((f) => f.resultat);
+  const bonnes = notees.filter((f) => f.resultat === 'bonne');
+
+  if (notees.length < 4) {
+    return { constats, notees: notees.length, suffisant: false };
+  }
+  if (bonnes.length < 2) {
+    constats.push({
+      niveau: 'info', coup: 'Balles',
+      titre: 'Il manque des balles réussies pour comparer',
+      detail: `Tu as noté ${notees.length} frappe(s), dont ${bonnes.length} bonne(s). Pour repérer ce qui distingue une balle réussie d'une balle ratée, il en faut au moins deux de chaque.`,
+    });
+    return { constats, notees: notees.length, suffisant: false };
+  }
+
+  const parFaute = new Map();
+  for (const f of notees) {
+    if (f.resultat === 'bonne') continue;
+    if (!parFaute.has(f.resultat)) parFaute.set(f.resultat, []);
+    parFaute.get(f.resultat).push(f);
+  }
+
+  for (const [faute, liste] of parFaute) {
+    if (liste.length < 2) continue;
+
+    const differences = [];
+    for (const m of MESURES_COMPAREES) {
+      const medRate = mediane(liste.map((f) => f[m.cle]));
+      const medBonne = mediane(bonnes.map((f) => f[m.cle]));
+      if (!Number.isFinite(medRate) || !Number.isFinite(medBonne)) continue;
+      const ecart = medRate - medBonne;
+      if (Math.abs(ecart) < m.ecartMin) continue;
+      differences.push({
+        m, ecart,
+        texte: `${m.libelle} est ${ecart > 0 ? m.plus : m.moins} ` +
+          `(${medRate.toFixed(m.decimales)}${m.unite || ''} contre ${medBonne.toFixed(m.decimales)}${m.unite || ''} sur tes bonnes balles)`,
+      });
+    }
+
+    const nom = LIBELLES_RESULTAT[faute] || faute;
+    if (differences.length) {
+      differences.sort((a, b) => Math.abs(b.ecart / b.m.ecartMin) - Math.abs(a.ecart / a.m.ecartMin));
+      constats.push({
+        niveau: 'priorite', coup: 'Balles',
+        titre: `Ce qui change sur tes ${nom}`,
+        detail: `Sur tes ${liste.length} ${nom}, comparées à tes ${bonnes.length} bonnes balles : ` +
+          differences.slice(0, 3).map((d) => d.texte).join(' ; ') + '.',
+        exo: `Refais une série en te concentrant uniquement sur ${differences[0].m.libelle} : ` +
+          `c'est le plus gros écart entre tes réussites et tes fautes.`,
+      });
+    } else {
+      constats.push({
+        niveau: 'info', coup: 'Balles',
+        titre: `Rien de mesurable ne distingue tes ${nom}`,
+        detail: `Tes ${liste.length} ${nom} ont un geste très proche de tes bonnes balles. La cause est donc ailleurs que dans ce que l'app sait voir : très probablement la prise de raquette, l'orientation du tampon à l'impact, ou le timing par rapport au rebond.`,
+      });
+    }
+  }
+
+  return { constats, notees: notees.length, suffisant: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* 6. Point d'entrée                                                   */
 /* ------------------------------------------------------------------ */
 
 export function analyser({ frames, largeur, hauteur, tauxDetection }, profil = {}) {

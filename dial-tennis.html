@@ -157,7 +157,39 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .coup-carte dt { color: var(--txt2); }
 .coup-carte dd { margin: 0; text-align: right; }
 
+/* Coups : notation et défilement image par image */
+.coups-intro { margin-bottom: 1rem; }
+.coups-intro p { font-size: .9rem; }
+.comparaison:not(:empty) { margin: 1.2rem 0; }
+.coup-carte.notee { border-color: var(--acc2); }
+.nav-images {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .4rem; padding: .35rem .5rem; background: #11151c; border-bottom: 1px solid var(--line);
+}
+.nav-images button { padding: .2rem .7rem; font-size: .95rem; line-height: 1.2; }
+.nav-images .repere { font-size: .78rem; color: var(--txt2); font-variant-numeric: tabular-nums; }
+.nav-images .repere.sur-impact { color: var(--acc); font-weight: 600; }
+label.resultat { margin: .5rem 0 .6rem; font-size: .78rem; }
+label.resultat select { padding: .35rem .45rem; font-size: .85rem; }
+.lien-video { width: 100%; margin-top: .6rem; padding: .35rem; font-size: .82rem; }
+.actions.export { margin: 0 0 .6rem; }
+
+/* Progression */
+.zone-courbe { margin: 1rem 0 1.4rem; }
+.courbe { width: 100%; height: auto; display: block; }
+.courbe .c-grille { stroke: var(--line); stroke-width: 1; }
+.courbe .c-axe { fill: var(--txt2); font-size: 11px; font-family: inherit; }
+.courbe .c-valeur { fill: var(--txt); font-size: 12px; font-weight: 600; font-family: inherit; }
+.courbe .c-zone { fill: var(--acc2); font-size: 10px; font-family: inherit; opacity: .8; }
+.lecture-courbe { margin-top: .6rem; font-size: .92rem; }
+button.mini { padding: .25rem .6rem; font-size: .78rem; }
+
 /* Tableau mesures */
+/* Les tableaux défilent horizontalement plutôt que de déborder de la page */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 1rem; }
+.table-scroll table { min-width: 100%; width: max-content; }
+.table-scroll td, .table-scroll th { white-space: nowrap; }
+
 table { width: 100%; border-collapse: collapse; font-size: .88rem; }
 th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--line); }
 th { color: var(--txt2); font-weight: 600; }
@@ -288,6 +320,9 @@ footer { max-width: 1000px; margin: 0 auto; padding: 0 1.25rem 2.5rem; color: va
             <option value="une">À une main</option>
           </select>
         </label>
+        <label>Ta prise de raquette
+          <select id="opt-prise"></select>
+        </label>
         <label>La caméra était
           <select id="opt-angle">
             <option value="cote" selected>Sur le côté</option>
@@ -359,6 +394,7 @@ footer { max-width: 1000px; margin: 0 auto; padding: 0 1.25rem 2.5rem; color: va
       <button class="onglet actif" data-vue="synthese" role="tab">Synthèse</button>
       <button class="onglet" data-vue="coups" role="tab">Coups détectés</button>
       <button class="onglet" data-vue="mesures" role="tab">Mesures</button>
+      <button class="onglet" data-vue="progression" role="tab">Progression</button>
       <button class="onglet" data-vue="ia" role="tab">Conseils IA</button>
       <button class="onglet" data-vue="fondamentaux" role="tab">Fondamentaux</button>
     </nav>
@@ -366,6 +402,7 @@ footer { max-width: 1000px; margin: 0 auto; padding: 0 1.25rem 2.5rem; color: va
     <div class="vue" id="vue-synthese"></div>
     <div class="vue" id="vue-coups" hidden></div>
     <div class="vue" id="vue-mesures" hidden></div>
+    <div class="vue" id="vue-progression" hidden></div>
 
     <div class="vue" id="vue-ia" hidden>
       <div class="ia-config">
@@ -567,6 +604,37 @@ const SEUILS = {
   // Service : flexion des genoux avant l'extension
   flexionService: { ideal: [120, 150], acceptable: [110, 162] },
 };
+
+/**
+ * Régularité : écart-type toléré d'une frappe à l'autre, pour un même coup.
+ * Format [régulier jusqu'à, acceptable jusqu'à] — au-delà, le geste n'est pas reproductible.
+ */
+const SEUILS_REGULARITE = {
+  hauteurImpact:   { libelle: "hauteur du point d'impact", seuils: [0.14, 0.26], unite: '' },
+  coudeImpact:     { libelle: "angle du coude à l'impact", seuils: [8, 15], unite: '°' },
+  rotationEpaules: { libelle: 'rotation du buste',         seuils: [0.07, 0.13], unite: '' },
+  accompagnement:  { libelle: "amplitude d'accompagnement", seuils: [0.4, 0.75], unite: '' },
+};
+
+/** Ce que le joueur peut déclarer sur le devenir de chaque balle. */
+const RESULTATS_BALLE = [
+  { code: '',        libelle: '—' },
+  { code: 'bonne',   libelle: 'Bonne balle' },
+  { code: 'filet',   libelle: 'Dans le filet' },
+  { code: 'longue',  libelle: 'Trop longue' },
+  { code: 'large',   libelle: 'Large / à côté' },
+  { code: 'cadre',   libelle: 'Faute de cadre' },
+];
+
+/** Prises de raquette : l'app ne peut pas les voir, mais le joueur peut les déclarer. */
+const PRISES = [
+  { code: '', libelle: 'Je ne sais pas' },
+  { code: 'continentale', libelle: 'Continentale (marteau)' },
+  { code: 'semi-fermee', libelle: 'Semi-fermée (eastern)' },
+  { code: 'fermee', libelle: 'Fermée (semi-western)' },
+  { code: 'tres-fermee', libelle: 'Très fermée (western)' },
+  { code: 'deux-mains', libelle: 'À deux mains' },
+];
 
 /* ===== js/pose.js ===== */
 /**
@@ -777,6 +845,14 @@ function mediane(arr) {
 }
 
 const borne = (v, min, max) => Math.min(max, Math.max(min, v));
+
+/** Écart-type d'une série, en ignorant les valeurs manquantes. */
+function ecartType(arr) {
+  const v = finis(arr);
+  if (v.length < 2) return NaN;
+  const moy = v.reduce((s, x) => s + x, 0) / v.length;
+  return Math.sqrt(v.reduce((s, x) => s + (x - moy) ** 2, 0) / v.length);
+}
 
 /** Compare une valeur à un seuil : 'bon' | 'moyen' | 'mauvais', + sens de l'écart. */
 function evaluer(valeur, seuil) {
@@ -1223,6 +1299,38 @@ function reglesGroupe(type, frappes) {
     }
   }
 
+  /* --- Régularité d'une frappe à l'autre --- */
+  if (n >= 3) {
+    const mesures = Object.entries(SEUILS_REGULARITE).map(([cle, def]) => {
+      const et = ecartType(frappes.map((f) => f[cle]));
+      const [bon, acceptable] = def.seuils;
+      return {
+        cle, ...def, et,
+        etat: !Number.isFinite(et) ? 'inconnu' : et <= bon ? 'bon' : et <= acceptable ? 'moyen' : 'mauvais',
+        exces: Number.isFinite(et) ? et / bon : NaN,
+      };
+    }).filter((m) => m.etat !== 'inconnu');
+
+    const pires = mesures.filter((m) => m.etat !== 'bon').sort((a, b) => b.exces - a.exces);
+    const format = (m) => `${m.libelle} (± ${m.et < 1 ? m.et.toFixed(2) : Math.round(m.et)}${m.unite})`;
+
+    if (mesures.length && !pires.length) {
+      ajouter({
+        niveau: 'bon', titre: 'Geste reproductible',
+        detail: `Tes ${n} frappes se ressemblent beaucoup : point d'impact, bras et amplitude varient peu d'une balle à l'autre. C'est le vrai marqueur du niveau — un bon geste répété bat un geste parfait une fois sur cinq.`,
+      });
+    } else if (pires.length) {
+      const grave = pires.some((m) => m.etat === 'mauvais');
+      ajouter({
+        niveau: grave ? 'priorite' : 'corriger',
+        titre: 'Frappes trop irrégulières',
+        detail: `D'une frappe à l'autre, ce qui bouge le plus : ${pires.slice(0, 2).map(format).join(', ')}. ` +
+          `Sur ${n} frappes du même coup, ces écarts veulent dire que tu ne refais pas deux fois le même geste — c'est ce qui produit les fautes inexpliquées.`,
+        exo: `Série de 10 balles lentes, même hauteur, même cible, sans chercher la puissance : l'objectif est que les 10 se ressemblent. Compte celles qui « sonnent » pareil.`,
+      });
+    }
+  }
+
   /* --- Bras libre (coups de fond) --- */
   if (!service && !volee) {
     const bl = med('brasLibre');
@@ -1279,7 +1387,102 @@ function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte
 }
 
 /* ------------------------------------------------------------------ */
-/* 5. Point d'entrée                                                   */
+/* 5. Corrélation avec le devenir de la balle                          */
+/* ------------------------------------------------------------------ */
+
+const LIBELLES_RESULTAT = {
+  bonne: 'bonnes balles', filet: 'balles au filet', longue: 'balles trop longues',
+  large: 'balles larges', cadre: 'fautes de cadre',
+};
+
+/** Mesures comparables entre balles réussies et balles ratées. */
+const MESURES_COMPAREES = [
+  { cle: 'hauteurImpact', libelle: "le point d'impact", ecartMin: 0.18,
+    plus: 'plus haut', moins: 'plus bas', decimales: 2 },
+  { cle: 'coudeImpact', libelle: 'le bras', ecartMin: 9,
+    plus: 'plus tendu', moins: 'plus plié', decimales: 0, unite: '°' },
+  { cle: 'rotationEpaules', libelle: 'la rotation du buste', ecartMin: 0.09,
+    plus: 'plus faible', moins: 'plus marquée', decimales: 2 },
+  { cle: 'accompagnement', libelle: "l'accompagnement", ecartMin: 0.5,
+    plus: 'plus long', moins: 'plus court', decimales: 1 },
+  { cle: 'flexionGenou', libelle: 'les jambes', ecartMin: 10,
+    plus: 'plus tendues', moins: 'plus fléchies', decimales: 0, unite: '°' },
+  { cle: 'deplacementTete', libelle: 'la tête', ecartMin: 0.12,
+    plus: 'plus mobile', moins: 'plus stable', decimales: 2 },
+];
+
+/**
+ * Compare les frappes réussies aux frappes ratées, par type de faute.
+ * Ne conclut que sur des écarts nets et sur des effectifs suffisants : avec deux balles
+ * de chaque côté, n'importe quelle différence peut être du hasard.
+ * @param {Array} frappes frappes portant un champ `resultat`
+ */
+function analyserResultats(frappes) {
+  const constats = [];
+  const notees = frappes.filter((f) => f.resultat);
+  const bonnes = notees.filter((f) => f.resultat === 'bonne');
+
+  if (notees.length < 4) {
+    return { constats, notees: notees.length, suffisant: false };
+  }
+  if (bonnes.length < 2) {
+    constats.push({
+      niveau: 'info', coup: 'Balles',
+      titre: 'Il manque des balles réussies pour comparer',
+      detail: `Tu as noté ${notees.length} frappe(s), dont ${bonnes.length} bonne(s). Pour repérer ce qui distingue une balle réussie d'une balle ratée, il en faut au moins deux de chaque.`,
+    });
+    return { constats, notees: notees.length, suffisant: false };
+  }
+
+  const parFaute = new Map();
+  for (const f of notees) {
+    if (f.resultat === 'bonne') continue;
+    if (!parFaute.has(f.resultat)) parFaute.set(f.resultat, []);
+    parFaute.get(f.resultat).push(f);
+  }
+
+  for (const [faute, liste] of parFaute) {
+    if (liste.length < 2) continue;
+
+    const differences = [];
+    for (const m of MESURES_COMPAREES) {
+      const medRate = mediane(liste.map((f) => f[m.cle]));
+      const medBonne = mediane(bonnes.map((f) => f[m.cle]));
+      if (!Number.isFinite(medRate) || !Number.isFinite(medBonne)) continue;
+      const ecart = medRate - medBonne;
+      if (Math.abs(ecart) < m.ecartMin) continue;
+      differences.push({
+        m, ecart,
+        texte: `${m.libelle} est ${ecart > 0 ? m.plus : m.moins} ` +
+          `(${medRate.toFixed(m.decimales)}${m.unite || ''} contre ${medBonne.toFixed(m.decimales)}${m.unite || ''} sur tes bonnes balles)`,
+      });
+    }
+
+    const nom = LIBELLES_RESULTAT[faute] || faute;
+    if (differences.length) {
+      differences.sort((a, b) => Math.abs(b.ecart / b.m.ecartMin) - Math.abs(a.ecart / a.m.ecartMin));
+      constats.push({
+        niveau: 'priorite', coup: 'Balles',
+        titre: `Ce qui change sur tes ${nom}`,
+        detail: `Sur tes ${liste.length} ${nom}, comparées à tes ${bonnes.length} bonnes balles : ` +
+          differences.slice(0, 3).map((d) => d.texte).join(' ; ') + '.',
+        exo: `Refais une série en te concentrant uniquement sur ${differences[0].m.libelle} : ` +
+          `c'est le plus gros écart entre tes réussites et tes fautes.`,
+      });
+    } else {
+      constats.push({
+        niveau: 'info', coup: 'Balles',
+        titre: `Rien de mesurable ne distingue tes ${nom}`,
+        detail: `Tes ${liste.length} ${nom} ont un geste très proche de tes bonnes balles. La cause est donc ailleurs que dans ce que l'app sait voir : très probablement la prise de raquette, l'orientation du tampon à l'impact, ou le timing par rapport au rebond.`,
+      });
+    }
+  }
+
+  return { constats, notees: notees.length, suffisant: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* 6. Point d'entrée                                                   */
 /* ------------------------------------------------------------------ */
 
 function analyser({ frames, largeur, hauteur, tauxDetection }, profil = {}) {
@@ -1360,6 +1563,233 @@ function analyser({ frames, largeur, hauteur, tauxDetection }, profil = {}) {
   };
 }
 
+/* ===== js/historique.js ===== */
+/**
+ * Suivi dans le temps : conserve un résumé de chaque analyse dans le navigateur
+ * et trace l'évolution d'une mesure d'une séance à l'autre.
+ *
+ * Rien ne part sur internet : tout vit dans le localStorage de l'appareil.
+ */
+
+
+
+const CLE = 'dial-tennis-historique';
+const MAX_ENTREES = 100;
+
+/**
+ * Mesures suivies. `bande` est l'intervalle visé : on le dessine en fond, ce qui évite
+ * de faire croire qu'une courbe qui monte est forcément un progrès.
+ */
+const MESURES_SUIVIES = [
+  { cle: 'score', libelle: 'Score technique global', bande: null, decimales: 0, unite: '/100', global: true },
+  { cle: 'hauteurImpact', libelle: "Hauteur du point d'impact", bande: SEUILS.hauteurImpact.ideal, decimales: 2, unite: '' },
+  { cle: 'flexionGenou', libelle: 'Flexion des jambes', bande: SEUILS.flexionGenou.ideal, decimales: 0, unite: '°' },
+  { cle: 'rotationEpaules', libelle: 'Rotation du buste (bas = mieux)', bande: SEUILS.rotationEpaules.ideal, decimales: 2, unite: '' },
+  { cle: 'coudeImpact', libelle: "Angle du coude à l'impact", bande: SEUILS.coudeImpact.ideal, decimales: 0, unite: '°' },
+  { cle: 'accompagnement', libelle: 'Amplitude du geste après la balle', bande: SEUILS.accompagnement.ideal, decimales: 1, unite: '' },
+  { cle: 'deplacementTete', libelle: "Stabilité de la tête (bas = mieux)", bande: SEUILS.stabiliteTete.ideal, decimales: 2, unite: '' },
+];
+
+/* ------------------------------------------------------------------ */
+/* Stockage                                                            */
+/* ------------------------------------------------------------------ */
+
+function lireHistorique() {
+  try {
+    const brut = localStorage.getItem(CLE);
+    const liste = brut ? JSON.parse(brut) : [];
+    return Array.isArray(liste) ? liste : [];
+  } catch {
+    return [];   // stockage indisponible (navigation privée) ou données corrompues
+  }
+}
+
+function ecrire(liste) {
+  try {
+    localStorage.setItem(CLE, JSON.stringify(liste.slice(-MAX_ENTREES)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Résumé compact d'une analyse — pas d'images, pas de points, juste les chiffres. */
+function enregistrer(analyse) {
+  if (!analyse?.frappes?.length) return null;
+
+  const entree = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    date: new Date().toISOString(),
+    score: analyse.score,
+    nbFrappes: analyse.frappes.length,
+    duree: Math.round(analyse.duree * 10) / 10,
+    profil: {
+      main: analyse.profil?.main || 'auto',
+      coup: analyse.profil?.coup || 'auto',
+      niveau: analyse.profil?.niveau || '',
+      objectif: (analyse.profil?.objectif || '').slice(0, 200),
+    },
+    groupes: analyse.groupes.map((g) => ({
+      type: g.type, libelle: g.libelle, nombre: g.nombre, medianes: g.medianes,
+    })),
+  };
+
+  const liste = lireHistorique();
+  liste.push(entree);
+  return ecrire(liste) ? entree : null;
+}
+
+function supprimer(id) {
+  ecrire(lireHistorique().filter((e) => e.id !== id));
+}
+
+function toutEffacer() {
+  try { localStorage.removeItem(CLE); } catch { /* rien à faire */ }
+}
+
+/** Types de coups présents dans l'historique, pour proposer un filtre. */
+function coupsPresents(liste = lireHistorique()) {
+  const vus = new Map();
+  for (const e of liste) for (const g of e.groupes || []) vus.set(g.type, g.libelle);
+  return [...vus].map(([type, libelle]) => ({ type, libelle: libelle || LIBELLES_COUP[type] || type }));
+}
+
+/** Points d'une mesure pour un type de coup donné, du plus ancien au plus récent. */
+function serie(mesure, typeCoup, liste = lireHistorique()) {
+  const def = MESURES_SUIVIES.find((m) => m.cle === mesure);
+  if (!def) return [];
+
+  return liste.map((e) => {
+    const valeur = def.global
+      ? e.score
+      : (e.groupes || []).find((g) => g.type === typeCoup)?.medianes?.[mesure];
+    return Number.isFinite(valeur) ? { date: e.date, valeur, entree: e } : null;
+  }).filter(Boolean);
+}
+
+/* ------------------------------------------------------------------ */
+/* Graphique                                                           */
+/* ------------------------------------------------------------------ */
+
+const dateCourte = (iso) =>
+  new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+
+/**
+ * Courbe d'évolution en SVG : une seule série, la zone visée en fond,
+ * valeur affichée uniquement au premier et au dernier point.
+ */
+function tracerCourbe(points, mesure, { largeur = 640, hauteur = 240 } = {}) {
+  const def = MESURES_SUIVIES.find((m) => m.cle === mesure);
+  if (!def || points.length < 2) return null;
+
+  const marge = { haut: 18, droite: 54, bas: 30, gauche: 46 };
+  const l = largeur - marge.gauche - marge.droite;
+  const h = hauteur - marge.haut - marge.bas;
+
+  const valeurs = points.map((p) => p.valeur);
+  const bande = def.bande;
+  let min = Math.min(...valeurs, ...(bande ? [bande[0]] : []));
+  let max = Math.max(...valeurs, ...(bande ? [bande[1]] : []));
+  if (min === max) { min -= 1; max += 1; }
+  const marge_y = (max - min) * 0.12;
+  min -= marge_y; max += marge_y;
+
+  const x = (i) => marge.gauche + (points.length === 1 ? l / 2 : (i * l) / (points.length - 1));
+  const y = (v) => marge.haut + h - ((v - min) / (max - min)) * h;
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const fmt = (v) => v.toFixed(def.decimales) + def.unite;
+
+  const morceaux = [];
+
+  // Zone visée, dessinée en premier pour rester en arrière-plan
+  if (bande) {
+    const hautBande = y(Math.min(bande[1], max));
+    const basBande = y(Math.max(bande[0], min));
+    morceaux.push(
+      `<rect x="${marge.gauche}" y="${hautBande.toFixed(1)}" width="${l}" ` +
+      `height="${Math.max(0, basBande - hautBande).toFixed(1)}" fill="#7bd389" opacity="0.12"/>`,
+      `<text x="${marge.gauche + l - 4}" y="${(hautBande + 12).toFixed(1)}" text-anchor="end" ` +
+      `class="c-zone">zone visée</text>`,
+    );
+  }
+
+  // Grille horizontale discrète + graduations
+  for (let i = 0; i <= 2; i++) {
+    const v = min + ((max - min) * i) / 2;
+    const yy = y(v).toFixed(1);
+    morceaux.push(
+      `<line x1="${marge.gauche}" y1="${yy}" x2="${marge.gauche + l}" y2="${yy}" class="c-grille"/>`,
+      `<text x="${marge.gauche - 8}" y="${yy}" dy="0.32em" text-anchor="end" class="c-axe">${esc(fmt(v))}</text>`,
+    );
+  }
+
+  // Ligne
+  const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.valeur).toFixed(1)}`).join(' ');
+  morceaux.push(`<path d="${d}" fill="none" stroke="#d8f24a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
+
+  // Points, avec un liseré de la couleur du fond pour rester lisibles quand ils se chevauchent
+  points.forEach((p, i) => {
+    morceaux.push(
+      `<circle cx="${x(i).toFixed(1)}" cy="${y(p.valeur).toFixed(1)}" r="4.5" ` +
+      `fill="#d8f24a" stroke="#161b23" stroke-width="2"><title>${esc(dateCourte(p.date))} — ${esc(fmt(p.valeur))}</title></circle>`,
+    );
+  });
+
+  // Valeurs annotées seulement aux extrémités : une étiquette par point serait illisible
+  const annoter = (i, ancre, dx) => {
+    const p = points[i];
+    morceaux.push(
+      `<text x="${(x(i) + dx).toFixed(1)}" y="${(y(p.valeur) - 10).toFixed(1)}" ` +
+      `text-anchor="${ancre}" class="c-valeur">${esc(fmt(p.valeur))}</text>`,
+    );
+  };
+  annoter(0, 'start', -2);
+  if (points.length > 1) annoter(points.length - 1, 'end', 2);
+
+  // Dates aux extrémités
+  morceaux.push(
+    `<text x="${marge.gauche}" y="${hauteur - 8}" class="c-axe">${esc(dateCourte(points[0].date))}</text>`,
+    `<text x="${marge.gauche + l}" y="${hauteur - 8}" text-anchor="end" class="c-axe">${esc(dateCourte(points.at(-1).date))}</text>`,
+  );
+
+  return `<svg viewBox="0 0 ${largeur} ${hauteur}" class="courbe" role="img" ` +
+    `aria-label="Évolution de ${esc(def.libelle)} sur ${points.length} analyses">${morceaux.join('')}</svg>`;
+}
+
+/**
+ * Lecture en clair de l'évolution : on parle en termes d'entrée dans la zone visée
+ * plutôt que de hausse ou de baisse, qui ne veulent rien dire seules.
+ */
+function commenterEvolution(points, mesure) {
+  const def = MESURES_SUIVIES.find((m) => m.cle === mesure);
+  if (!def || points.length < 2) return null;
+
+  const premier = points[0].valeur;
+  const dernier = points.at(-1).valeur;
+  const fmt = (v) => v.toFixed(def.decimales) + def.unite;
+
+  if (!def.bande) {
+    const delta = dernier - premier;
+    if (Math.abs(delta) < 3) return `Score stable (${fmt(premier)} → ${fmt(dernier)}).`;
+    return delta > 0
+      ? `Score en hausse : ${fmt(premier)} → ${fmt(dernier)}.`
+      : `Score en baisse : ${fmt(premier)} → ${fmt(dernier)}.`;
+  }
+
+  const dans = (v) => v >= def.bande[0] && v <= def.bande[1];
+  const ecart = (v) => dans(v) ? 0 : Math.min(Math.abs(v - def.bande[0]), Math.abs(v - def.bande[1]));
+
+  if (dans(dernier) && !dans(premier)) return `Tu es entré dans la zone visée : ${fmt(premier)} → ${fmt(dernier)}. C'est un vrai progrès.`;
+  if (dans(dernier) && dans(premier)) return `Tu restes dans la zone visée (${fmt(premier)} → ${fmt(dernier)}).`;
+  if (!dans(dernier) && dans(premier)) return `Tu es sorti de la zone visée : ${fmt(premier)} → ${fmt(dernier)}.`;
+  const progres = ecart(premier) - ecart(dernier);
+  if (Math.abs(progres) < (def.bande[1] - def.bande[0]) * 0.1) return `Pas de changement net : ${fmt(premier)} → ${fmt(dernier)}, toujours hors de la zone visée.`;
+  return progres > 0
+    ? `Tu te rapproches de la zone visée : ${fmt(premier)} → ${fmt(dernier)}.`
+    : `Tu t'en éloignes : ${fmt(premier)} → ${fmt(dernier)}.`;
+}
+
 /* ===== js/ai.js ===== */
 /**
  * Analyse approfondie facultative via l'API Claude (Anthropic), appelée directement
@@ -1421,7 +1851,33 @@ const LIBELLES = {
     'volee-coup-droit': 'volée de coup droit', 'volee-revers': 'volée de revers',
     auto: 'non précisé (coups variés)',
   },
+  prise: {
+    continentale: 'continentale (marteau)', 'semi-fermee': 'semi-fermée (eastern)',
+    fermee: 'fermée (semi-western)', 'tres-fermee': 'très fermée (western)',
+    'deux-mains': 'à deux mains',
+  },
+  resultat: {
+    bonne: 'bonne balle', filet: 'dans le filet', longue: 'trop longue',
+    large: 'large', cadre: 'faute de cadre',
+  },
 };
+
+/** Devenir des balles, quand le joueur l'a renseigné frappe par frappe. */
+function resultatsBalles(analyse) {
+  const notees = (analyse.frappes || []).filter((f) => f.resultat);
+  if (!notees.length) return null;
+
+  const compte = new Map();
+  for (const f of notees) compte.set(f.resultat, (compte.get(f.resultat) || 0) + 1);
+
+  return [
+    `Devenir des balles, déclaré par le joueur (${notees.length} frappe(s) sur ${analyse.frappes.length}) :`,
+    ...[...compte].map(([r, n]) => `- ${n} × ${LIBELLES.resultat[r] || r}`),
+    `Détail chronologique : ${notees.map((f) => `${f.t.toFixed(1)}s ${LIBELLES.resultat[f.resultat] || f.resultat}`).join(', ')}.`,
+    `Sers-t'en : cherche ce qui distingue les frappes réussies des frappes ratées sur les images.`,
+    ``,
+  ].join('\n');
+}
 
 function construirePrompt({ analyse, avecWeb, nbImages }) {
   const p = analyse.profil || {};
@@ -1455,6 +1911,7 @@ function construirePrompt({ analyse, avecWeb, nbImages }) {
       : `${analyse.mainDominante === 'D' ? 'droitier' : 'gaucher'} — DEVINÉ automatiquement, donc peu fiable`}`,
     `- Coup filmé : ${LIBELLES.coup[p.coup] || 'non précisé'}`,
     `- Revers : ${p.revers === 'une' ? 'à une main' : 'à deux mains'}`,
+    `- Prise de raquette déclarée : ${LIBELLES.prise[p.prise] || 'inconnue du joueur'}`,
     `- Niveau : ${LIBELLES.niveau[p.niveau] || LIBELLES.niveau.intermediaire}`,
     p.anciennete ? `- Expérience : ${LIBELLES.anciennete[p.anciennete]}` : null,
     `- Caméra placée ${LIBELLES.angle[p.angle] || 'position non précisée'}`,
@@ -1470,6 +1927,7 @@ function construirePrompt({ analyse, avecWeb, nbImages }) {
     `Mesures automatiques (médianes par type de coup) :`,
     groupes || '- (aucun coup identifié)',
     ``,
+    resultatsBalles(analyse),
     `Défauts relevés par le moteur de règles :`,
     constats,
     ``,
@@ -1633,6 +2091,7 @@ async function echanger({ apiKey, base, messages, onStatut }) {
 
 
 
+
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, html) => {
   const n = document.createElement(tag);
@@ -1656,6 +2115,7 @@ function lireProfil() {
     main: $('#opt-main').value,
     coup: $('#opt-coup').value,
     revers: $('#opt-revers').value,
+    prise: $('#opt-prise').value,
     angle: $('#opt-angle').value,
     niveau: $('#opt-niveau').value,
     anciennete: $('#opt-anciennete').value,
@@ -1831,6 +2291,7 @@ btnAnalyser.addEventListener('click', async () => {
     progres(1, 'Terminé.');
     setTimeout(() => { $('#progress').hidden = true; }, 800);
 
+    enregistrer(etat.analyse);   // alimente le suivi dans le temps
     afficherResultats(etat.analyse);
     rafraichirOverlay();
   } catch (err) {
@@ -1847,10 +2308,14 @@ btnAnalyser.addEventListener('click', async () => {
 
 function afficherResultats(a) {
   $('#etape-resultats').hidden = false;
+  $('#etape-resultats').querySelector('h2').textContent = '2. Résultats';
   $('#etape-biblio').hidden = true;
+  majOnglets(true);
+  ouvrirOnglet('synthese');
   rendreSynthese(a);
   rendreCoups(a);
   rendreMesures(a);
+  rendreProgression();
   rendreFondamentaux($('#vue-fondamentaux'));
   $('#etape-resultats').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -1892,6 +2357,27 @@ function rendreSynthese(a) {
   bloc.appendChild(resume);
   vue.appendChild(bloc);
 
+  // Export : de quoi montrer le rapport à un entraîneur, qui reste le meilleur juge
+  const actions = el('div', 'actions export');
+  const btnFichier = el('button', 'ghost', 'Télécharger le rapport');
+  const btnCopier = el('button', 'ghost', 'Copier le rapport');
+  btnFichier.type = btnCopier.type = 'button';
+  btnFichier.addEventListener('click', () => exporterRapport(a));
+  btnCopier.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(rapportTexte(a));
+      btnCopier.textContent = 'Copié ✓';
+      setTimeout(() => { btnCopier.textContent = 'Copier le rapport'; }, 2500);
+    } catch {
+      btnCopier.textContent = 'Copie refusée par le navigateur';
+    }
+  });
+  actions.append(btnFichier, btnCopier);
+  vue.appendChild(actions);
+  vue.appendChild(el('p', 'note',
+    "À montrer à ton entraîneur : c'est lui qui peut confirmer ou corriger ce diagnostic, " +
+    "notamment sur ce que l'app ne voit pas (prise de raquette, effet, trajectoire de balle)."));
+
   const sections = [
     ['priorite', 'À corriger en priorité'],
     ['corriger', 'À travailler'],
@@ -1911,6 +2397,25 @@ function rendreSynthese(a) {
     "notamment sur la prise de raquette et l'effet donné à la balle."));
 }
 
+/** Dessine une image échantillonnée avec son squelette sur un canvas. */
+function peindreFrame(cv, frame) {
+  const ctx = cv.getContext('2d');
+  const squelette = () => {
+    if (frame?.pts) dessinerSquelette(ctx, frame.pts, cv.width, cv.height, { epaisseur: 2.5 });
+  };
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  if (frame?.vignette) {
+    const img = new Image();
+    img.onload = () => { ctx.drawImage(img, 0, 0, cv.width, cv.height); squelette(); };
+    img.onerror = squelette;
+    img.src = frame.vignette;
+  } else {
+    ctx.fillStyle = '#11151c';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    squelette();
+  }
+}
+
 function rendreCoups(a) {
   const vue = $('#vue-coups');
   vue.innerHTML = '';
@@ -1919,33 +2424,89 @@ function rendreCoups(a) {
     return;
   }
 
+  const intro = el('div', 'coups-intro');
+  intro.innerHTML = `
+    <p>Pour chaque frappe, tu peux <strong>avancer image par image</strong> autour de l'impact
+    avec les flèches, et surtout <strong>dire où la balle est partie</strong>.</p>
+    <p class="note">Dès que quatre frappes sont renseignées, dont deux réussies, je peux comparer
+    tes réussites à tes fautes et te dire ce qui change concrètement dans ton geste.</p>`;
+  vue.appendChild(intro);
+
+  const barre = el('div', 'actions');
+  const btnComparer = el('button', 'primary', 'Comparer mes réussites et mes fautes');
+  btnComparer.type = 'button';
+  barre.appendChild(btnComparer);
+  vue.appendChild(barre);
+
+  const zoneComparaison = el('div', 'comparaison');
+  vue.appendChild(zoneComparaison);
+
+  btnComparer.addEventListener('click', () => {
+    zoneComparaison.innerHTML = '';
+    const { constats, notees, suffisant } = analyserResultats(a.frappes);
+    if (!suffisant && !constats.length) {
+      zoneComparaison.appendChild(el('p', 'note',
+        `Seulement ${notees} frappe(s) renseignée(s). Indique le devenir d'au moins quatre balles, ` +
+        `dont deux bonnes, pour que la comparaison ait un sens.`));
+      return;
+    }
+    zoneComparaison.appendChild(el('h3', null, 'Ce que disent tes balles'));
+    constats.forEach((c) => zoneComparaison.appendChild(carteConstat(c)));
+    zoneComparaison.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+
   const grille = el('div', 'coups-grille');
+  const frames = etat.echantillon.frames;
+
   a.frappes.forEach((f, i) => {
-    const frame = etat.echantillon.frames[f.indice];
     const carte = el('div', 'coup-carte');
 
     const cv = el('canvas');
     cv.width = 480;
     cv.height = Math.round(480 * (etat.echantillon.hauteur / etat.echantillon.largeur || 0.5625));
-    const ctx = cv.getContext('2d');
-    const dessiner = () => {
-      if (frame.pts) dessinerSquelette(ctx, frame.pts, cv.width, cv.height, { epaisseur: 2.5 });
-    };
-    if (frame.vignette) {
-      const img = new Image();
-      img.onload = () => { ctx.drawImage(img, 0, 0, cv.width, cv.height); dessiner(); };
-      img.onerror = dessiner;
-      img.src = frame.vignette;
-    } else {
-      ctx.fillStyle = '#11151c';
-      ctx.fillRect(0, 0, cv.width, cv.height);
-      dessiner();
-    }
     carte.appendChild(cv);
+
+    // Défilement image par image autour de l'impact
+    let indice = f.indice;
+    const nav = el('div', 'nav-images');
+    const prec = el('button', 'ghost', '◀');
+    const suiv = el('button', 'ghost', '▶');
+    const repere = el('span', 'repere');
+    prec.type = suiv.type = 'button';
+    prec.title = 'Image précédente'; suiv.title = 'Image suivante';
+
+    const rafraichir = () => {
+      indice = Math.max(0, Math.min(frames.length - 1, indice));
+      peindreFrame(cv, frames[indice]);
+      const dt = frames[indice].t - f.t;
+      repere.textContent = Math.abs(dt) < 0.001
+        ? 'impact'
+        : `impact ${dt > 0 ? '+' : '−'}${Math.abs(dt).toFixed(2)} s`;
+      repere.classList.toggle('sur-impact', Math.abs(dt) < 0.001);
+      prec.disabled = indice === 0;
+      suiv.disabled = indice === frames.length - 1;
+    };
+    prec.addEventListener('click', () => { indice--; rafraichir(); });
+    suiv.addEventListener('click', () => { indice++; rafraichir(); });
+    nav.append(prec, repere, suiv);
+    carte.appendChild(nav);
 
     const num = (v, d = 2, u = '') => (Number.isFinite(v) ? v.toFixed(d) + u : '—');
     const infos = el('div', 'infos');
     infos.appendChild(el('h4', null, `${i + 1}. ${echapper(LIBELLES_COUP[f.type] || f.type)} — ${f.t.toFixed(1)} s`));
+
+    const choix = el('label', 'resultat', 'Cette balle est partie…');
+    const select = el('select');
+    select.innerHTML = RESULTATS_BALLE
+      .map((r) => `<option value="${r.code}">${echapper(r.libelle)}</option>`).join('');
+    select.value = f.resultat || '';
+    select.addEventListener('change', () => {
+      f.resultat = select.value;
+      carte.classList.toggle('notee', !!select.value);
+    });
+    choix.appendChild(select);
+    infos.appendChild(choix);
+
     infos.appendChild(el('dl', null, `
       <dt>Hauteur d'impact</dt><dd>${num(f.hauteurImpact)}</dd>
       <dt>Coude à l'impact</dt><dd>${num(f.coudeImpact, 0, '°')}</dd>
@@ -1954,17 +2515,20 @@ function rendreCoups(a) {
       <dt>Accompagnement</dt><dd>${num(f.accompagnement, 1)}</dd>
       <dt>Vitesse poignet</dt><dd>${num(f.vitesse, 1)}</dd>
     `));
-    carte.appendChild(infos);
 
-    carte.style.cursor = 'pointer';
-    carte.title = 'Cliquer pour placer la vidéo sur cet instant';
-    carte.addEventListener('click', () => {
+    const voir = el('button', 'ghost lien-video', 'Voir dans la vidéo');
+    voir.type = 'button';
+    voir.addEventListener('click', () => {
       video.currentTime = f.t;
       video.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
+    infos.appendChild(voir);
 
+    carte.appendChild(infos);
     grille.appendChild(carte);
+    rafraichir();
   });
+
   vue.appendChild(grille);
 }
 
@@ -1999,12 +2563,177 @@ function rendreMesures(a) {
       }).join('')
     }</tr>`).join('')
   }</tbody>`;
-  vue.appendChild(t);
+  const cadreMesures = el('div', 'table-scroll');
+  cadreMesures.appendChild(t);
+  vue.appendChild(cadreMesures);
 
   vue.appendChild(el('p', 'note',
     "Les distances sont exprimées en largeurs d'épaules pour rester comparables d'une vidéo à l'autre, " +
     "quelle que soit la distance de la caméra. L'indice de rotation compare la largeur d'épaules à l'armé " +
     "et de face : plus il est bas, plus le buste est de profil."));
+}
+
+/* ------------------------------------------------------------------ */
+/* Progression dans le temps                                           */
+/* ------------------------------------------------------------------ */
+
+const dateLongue = (iso) => new Date(iso).toLocaleDateString('fr-FR',
+  { day: 'numeric', month: 'long', year: 'numeric' });
+const dateCompacte = (iso) => new Date(iso).toLocaleDateString('fr-FR',
+  { day: '2-digit', month: '2-digit', year: '2-digit' });
+
+function rendreProgression() {
+  const vue = $('#vue-progression');
+  vue.innerHTML = '';
+  const liste = lireHistorique();
+
+  if (!liste.length) {
+    vue.appendChild(el('p', 'note',
+      "Aucune analyse enregistrée pour l'instant. Chaque analyse que tu lances est ajoutée ici " +
+      "automatiquement, et reste sur cet appareil."));
+    return;
+  }
+
+  vue.appendChild(el('p', 'note',
+    `${liste.length} analyse(s) enregistrée(s) sur cet appareil. ` +
+    `Rien n'est envoyé sur internet : si tu changes de téléphone ou vides ton navigateur, l'historique part avec.`));
+
+  if (liste.length < 2) {
+    vue.appendChild(el('p', null,
+      "Il faut au moins deux analyses pour tracer une évolution. Refilme-toi dans quelques jours " +
+      "et reviens ici : tu verras si ce que tu travailles bouge vraiment."));
+  } else {
+    const coups = coupsPresents(liste);
+    const controles = el('div', 'options');
+
+    const selMesure = el('select');
+    selMesure.innerHTML = MESURES_SUIVIES
+      .map((m) => `<option value="${m.cle}">${echapper(m.libelle)}</option>`).join('');
+    const lblMesure = el('label', null, 'Quelle mesure suivre');
+    lblMesure.appendChild(selMesure);
+
+    const selCoup = el('select');
+    selCoup.innerHTML = coups
+      .map((c) => `<option value="${echapper(c.type)}">${echapper(c.libelle)}</option>`).join('');
+    const lblCoup = el('label', null, 'Sur quel coup');
+    lblCoup.appendChild(selCoup);
+
+    controles.append(lblMesure, lblCoup);
+    vue.appendChild(controles);
+
+    const zone = el('div', 'zone-courbe');
+    vue.appendChild(zone);
+
+    const dessiner = () => {
+      zone.innerHTML = '';
+      const mesure = selMesure.value;
+      const def = MESURES_SUIVIES.find((m) => m.cle === mesure);
+      selCoup.parentElement.hidden = !!def.global;
+
+      const points = serie(mesure, selCoup.value, liste);
+      if (points.length < 2) {
+        zone.appendChild(el('p', 'note',
+          "Pas encore deux analyses comportant cette mesure pour ce coup."));
+        return;
+      }
+      zone.appendChild(el('h3', null, echapper(def.libelle)));
+      const svg = tracerCourbe(points, mesure);
+      if (svg) zone.insertAdjacentHTML('beforeend', svg);
+      const lecture = commenterEvolution(points, mesure);
+      if (lecture) zone.appendChild(el('p', 'lecture-courbe', echapper(lecture)));
+    };
+    selMesure.addEventListener('change', dessiner);
+    selCoup.addEventListener('change', dessiner);
+    dessiner();
+  }
+
+  // Tableau : lisible sans voir la courbe, et seul endroit pour supprimer une entrée
+  vue.appendChild(el('h3', null, 'Tes analyses'));
+  const t = el('table');
+  t.innerHTML = `<thead><tr><th>Date</th><th>Coups</th><th class="num">Frappes</th>
+    <th class="num">Score</th><th></th></tr></thead><tbody>${
+    [...liste].reverse().map((e) => `<tr data-id="${echapper(e.id)}">
+      <td>${echapper(dateCompacte(e.date))}</td>
+      <td>${echapper((e.groupes || []).map((g) => `${g.libelle} ×${g.nombre}`).join(', ') || '—')}</td>
+      <td class="num">${e.nbFrappes}</td>
+      <td class="num">${e.score ?? '—'}</td>
+      <td><button type="button" class="ghost mini" data-suppr="${echapper(e.id)}">Supprimer</button></td>
+    </tr>`).join('')
+  }</tbody>`;
+  const cadre = el('div', 'table-scroll');
+  cadre.appendChild(t);
+  vue.appendChild(cadre);
+
+  t.addEventListener('click', (ev) => {
+    const id = ev.target?.dataset?.suppr;
+    if (!id) return;
+    supprimer(id);
+    rendreProgression();
+  });
+
+  const effacer = el('button', 'ghost', 'Effacer tout mon historique');
+  effacer.type = 'button';
+  effacer.addEventListener('click', () => {
+    if (confirm('Effacer définitivement toutes tes analyses enregistrées sur cet appareil ?')) {
+      toutEffacer();
+      rendreProgression();
+    }
+  });
+  vue.appendChild(effacer);
+}
+
+/* ------------------------------------------------------------------ */
+/* Export du rapport                                                   */
+/* ------------------------------------------------------------------ */
+
+function rapportTexte(a) {
+  const lignes = [
+    'DIAL TENNIS — RAPPORT D\'ANALYSE',
+    dateLongue(new Date().toISOString()),
+    '',
+    `Joueur : ${a.profil?.main === 'left' ? 'gaucher' : a.profil?.main === 'right' ? 'droitier' : 'main devinée'}` +
+      `, revers ${a.profil?.revers === 'une' ? 'à une main' : 'à deux mains'}`,
+    `Séquence : ${a.duree.toFixed(1)} s, ${a.frappes.length} frappe(s), posture détectée sur ${Math.round(a.tauxDetection * 100)} % des images`,
+    a.profil?.objectif ? `Objectif du joueur : ${a.profil.objectif}` : null,
+    `Score technique global : ${a.score}/100`,
+    '',
+    'MESURES MÉDIANES',
+    ...a.groupes.map((g) => {
+      const m = g.medianes;
+      const n = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : 'n/d');
+      return `  ${g.libelle} (${g.nombre} frappe(s)) : impact ${n(m.hauteurImpact)}, ` +
+        `coude ${n(m.coudeImpact, 0)}°, rotation ${n(m.rotationEpaules)}, ` +
+        `genou ${n(m.flexionGenou, 0)}°, accompagnement ${n(m.accompagnement, 1)}`;
+    }),
+    '',
+    'CONSTATS',
+    ...a.constats.map((c) => {
+      const etiquette = { priorite: 'PRIORITÉ', corriger: 'À TRAVAILLER', bon: 'POINT FORT', info: 'INFO' };
+      return [
+        `  [${etiquette[c.niveau] || c.niveau}] ${c.coup} — ${c.titre}`,
+        `    ${c.detail}`,
+        c.exo ? `    Exercice : ${c.exo}` : null,
+      ].filter(Boolean).join('\n');
+    }),
+    '',
+    'Repères de lecture : hauteur d\'impact 0 = hanche, 1 = épaule. Rotation : plus bas = buste',
+    'plus tourné. Distances en largeurs d\'épaules. Mesures issues d\'une détection de posture 2D,',
+    'à confronter à l\'œil d\'un entraîneur — la raquette et la balle ne sont pas analysées.',
+  ];
+  return lignes.filter((l) => l !== null).join('\n');
+}
+
+function exporterRapport(a) {
+  const texte = rapportTexte(a);
+  const blob = new Blob([texte], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const lien = document.createElement('a');
+  lien.href = url;
+  lien.download = `dial-tennis-${new Date().toISOString().slice(0, 10)}.txt`;
+  document.body.appendChild(lien);
+  lien.click();
+  lien.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function rendreFondamentaux(cible) {
@@ -2029,13 +2758,26 @@ function rendreFondamentaux(cible) {
 /* Onglets                                                             */
 /* ------------------------------------------------------------------ */
 
-document.querySelectorAll('.onglet').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.onglet').forEach((b) => b.classList.remove('actif'));
-    btn.classList.add('actif');
-    document.querySelectorAll('.vue').forEach((v) => { v.hidden = true; });
-    $(`#vue-${btn.dataset.vue}`).hidden = false;
+/** Onglets qui n'ont de sens qu'une fois une vidéo analysée. */
+const ONGLETS_ANALYSE = ['synthese', 'coups', 'mesures', 'ia'];
+
+function ouvrirOnglet(nom) {
+  document.querySelectorAll('.onglet').forEach((b) => b.classList.toggle('actif', b.dataset.vue === nom));
+  document.querySelectorAll('.vue').forEach((v) => { v.hidden = v.id !== `vue-${nom}`; });
+}
+
+/**
+ * Masque les onglets qui exigent une analyse tant qu'aucune vidéo n'a été traitée,
+ * pour que le suivi reste consultable en ouvrant simplement l'app.
+ */
+function majOnglets(avecAnalyse) {
+  document.querySelectorAll('.onglet').forEach((b) => {
+    b.hidden = !avecAnalyse && ONGLETS_ANALYSE.includes(b.dataset.vue);
   });
+}
+
+document.querySelectorAll('.onglet').forEach((btn) => {
+  btn.addEventListener('click', () => ouvrirOnglet(btn.dataset.vue));
 });
 
 /* ------------------------------------------------------------------ */
@@ -2250,7 +2992,21 @@ $('#ia-question').addEventListener('keydown', (e) => {
 /* Démarrage                                                           */
 /* ------------------------------------------------------------------ */
 
+$('#opt-prise').innerHTML = PRISES
+  .map((p) => `<option value="${echapper(p.code)}">${echapper(p.libelle)}</option>`).join('');
+
 rendreFondamentaux($('#biblio'));
+rendreProgression();
+
+// Sans analyse en cours, on n'affiche que ce qui a du sens : le suivi et les fiches.
+if (lireHistorique().length) {
+  majOnglets(false);
+  ouvrirOnglet('progression');
+  $('#etape-resultats').hidden = false;
+  $('#etape-resultats').querySelector('h2').textContent = '2. Ton suivi';
+} else {
+  majOnglets(true);
+}
 </script>
 </body>
 </html>

@@ -58,7 +58,33 @@ const LIBELLES = {
     'volee-coup-droit': 'volée de coup droit', 'volee-revers': 'volée de revers',
     auto: 'non précisé (coups variés)',
   },
+  prise: {
+    continentale: 'continentale (marteau)', 'semi-fermee': 'semi-fermée (eastern)',
+    fermee: 'fermée (semi-western)', 'tres-fermee': 'très fermée (western)',
+    'deux-mains': 'à deux mains',
+  },
+  resultat: {
+    bonne: 'bonne balle', filet: 'dans le filet', longue: 'trop longue',
+    large: 'large', cadre: 'faute de cadre',
+  },
 };
+
+/** Devenir des balles, quand le joueur l'a renseigné frappe par frappe. */
+function resultatsBalles(analyse) {
+  const notees = (analyse.frappes || []).filter((f) => f.resultat);
+  if (!notees.length) return null;
+
+  const compte = new Map();
+  for (const f of notees) compte.set(f.resultat, (compte.get(f.resultat) || 0) + 1);
+
+  return [
+    `Devenir des balles, déclaré par le joueur (${notees.length} frappe(s) sur ${analyse.frappes.length}) :`,
+    ...[...compte].map(([r, n]) => `- ${n} × ${LIBELLES.resultat[r] || r}`),
+    `Détail chronologique : ${notees.map((f) => `${f.t.toFixed(1)}s ${LIBELLES.resultat[f.resultat] || f.resultat}`).join(', ')}.`,
+    `Sers-t'en : cherche ce qui distingue les frappes réussies des frappes ratées sur les images.`,
+    ``,
+  ].join('\n');
+}
 
 function construirePrompt({ analyse, avecWeb, nbImages }) {
   const p = analyse.profil || {};
@@ -92,6 +118,7 @@ function construirePrompt({ analyse, avecWeb, nbImages }) {
       : `${analyse.mainDominante === 'D' ? 'droitier' : 'gaucher'} — DEVINÉ automatiquement, donc peu fiable`}`,
     `- Coup filmé : ${LIBELLES.coup[p.coup] || 'non précisé'}`,
     `- Revers : ${p.revers === 'une' ? 'à une main' : 'à deux mains'}`,
+    `- Prise de raquette déclarée : ${LIBELLES.prise[p.prise] || 'inconnue du joueur'}`,
     `- Niveau : ${LIBELLES.niveau[p.niveau] || LIBELLES.niveau.intermediaire}`,
     p.anciennete ? `- Expérience : ${LIBELLES.anciennete[p.anciennete]}` : null,
     `- Caméra placée ${LIBELLES.angle[p.angle] || 'position non précisée'}`,
@@ -107,6 +134,7 @@ function construirePrompt({ analyse, avecWeb, nbImages }) {
     `Mesures automatiques (médianes par type de coup) :`,
     groupes || '- (aucun coup identifié)',
     ``,
+    resultatsBalles(analyse),
     `Défauts relevés par le moteur de règles :`,
     constats,
     ``,
