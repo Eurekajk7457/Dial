@@ -21,6 +21,21 @@
   <button id="btn-aide" class="ghost" type="button">Comment filmer ?</button>
 </header>
 
+<nav class="menu" aria-label="Menu principal">
+  <button type="button" class="menu-item actif" data-aller="video">
+    <span class="ic" aria-hidden="true">🎥</span><span class="lb">Analyser</span>
+  </button>
+  <button type="button" class="menu-item" data-aller="analyses">
+    <span class="ic" aria-hidden="true">📈</span><span class="lb">Mes analyses</span>
+  </button>
+  <button type="button" class="menu-item" data-aller="question">
+    <span class="ic" aria-hidden="true">💬</span><span class="lb">Questions</span>
+  </button>
+  <button type="button" class="menu-item" data-aller="fiches">
+    <span class="ic" aria-hidden="true">📚</span><span class="lb">Apprendre</span>
+  </button>
+</nav>
+
 <main>
 
   <!-- ÉTAPE 1 : IMPORT -->
@@ -139,7 +154,7 @@
   </section>
 
   <!-- ÉTAPE 2 : RÉSULTATS -->
-  <section class="card" id="etape-resultats" hidden>
+  <section class="card" id="etape-resultats">
     <h2>2. Résultats</h2>
 
     <nav class="onglets" role="tablist">
@@ -157,53 +172,46 @@
     <div class="vue" id="vue-progression" hidden></div>
 
     <div class="vue" id="vue-ia" hidden>
-      <div class="ia-config">
+      <div id="ia-discussion" class="ia-discussion">
+        <h3>Parle à l'entraîneur</h3>
         <p class="note">
-          Analyse approfondie facultative : les images clés et les mesures sont envoyées à l'API Claude
+          Il connaît ton profil, tes mesures et les défauts relevés sur ta vidéo. Pose-lui une question
+          dans tes mots : il te répond et te demande des précisions si besoin.
+        </p>
+        <div id="ia-echanges"></div>
+        <div class="ia-saisie">
+          <input type="text" id="ia-question"
+                 placeholder="ex : pourquoi ma balle part-elle dans le filet ?">
+          <button id="btn-ia-question" class="primary" type="button">Envoyer</button>
+        </div>
+        <div id="ia-suggestions" class="suggestions"></div>
+        <p id="ia-question-erreur" class="erreur" hidden></p>
+      </div>
+
+      <details class="ia-config">
+        <summary>Réglages et analyse complète</summary>
+        <p class="note">
+          Cette partie est facultative : les images clés et les mesures sont envoyées à l'API Claude
           (Anthropic) avec <em>ta</em> clé. Sans clé, tout le reste de l'app fonctionne hors ligne.
         </p>
         <label>Clé API Anthropic
           <input type="password" id="ia-cle" placeholder="sk-ant-..." autocomplete="off">
         </label>
         <label class="ligne">
-          <input type="checkbox" id="ia-memoriser"> Mémoriser dans ce navigateur (localStorage)
+          <input type="checkbox" id="ia-memoriser"> Mémoriser dans ce navigateur
         </label>
         <label class="ligne">
-          <input type="checkbox" id="ia-web" checked> Chercher des références en ligne (recherche web)
+          <input type="checkbox" id="ia-web" checked> Chercher des références et des vidéos en ligne
         </label>
-        <p class="note">
-          Ton profil et ton objectif renseignés à l'étape 1 sont transmis avec les images.
-        </p>
-        <button id="btn-ia" class="primary" type="button">Lancer l'analyse IA</button>
+        <button id="btn-ia" class="primary" type="button">Lancer l'analyse complète</button>
         <p id="ia-statut" class="note" hidden></p>
         <p id="ia-erreur" class="erreur" hidden></p>
-      </div>
+      </details>
 
       <article id="ia-resultat" class="ia-resultat"></article>
-
-      <div id="ia-discussion" class="ia-discussion" hidden>
-        <h3>Poser une question</h3>
-        <p class="note">
-          L'entraîneur se souvient de ta vidéo et de tout ce qui précède. Demande-lui de préciser
-          un point, de détailler un exercice, ou dis-lui ce que tu ressens sur le court.
-        </p>
-        <div id="ia-echanges"></div>
-        <div class="ia-saisie">
-          <input type="text" id="ia-question"
-                 placeholder="ex : pourquoi ma balle part-elle dans le filet sur ce geste ?">
-          <button id="btn-ia-question" class="primary" type="button">Envoyer</button>
-        </div>
-        <p id="ia-question-erreur" class="erreur" hidden></p>
-      </div>
     </div>
 
     <div class="vue" id="vue-fondamentaux" hidden></div>
-  </section>
-
-  <!-- FONDAMENTAUX seuls (avant analyse) -->
-  <section class="card" id="etape-biblio">
-    <h2>Les fondamentaux, en attendant</h2>
-    <div id="biblio"></div>
   </section>
 
 </main>

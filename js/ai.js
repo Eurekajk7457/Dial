@@ -28,7 +28,13 @@ et le point de contrôle qui indique que c'est réussi.
 Ce que l'angle de caméra actuel ne permet pas de juger (prise de raquette, effet, trajectoire de balle...).
 
 Règles : sois direct et concret, pas de flatterie ni de généralités. Ne prétends pas voir ce que les images
-ne montrent pas. Si la qualité de détection est faible, dis-le d'entrée.`;
+ne montrent pas. Si la qualité de détection est faible, dis-le d'entrée.
+
+Le joueur n'est pas technicien : explique chaque terme technique la première fois que tu l'emploies.
+Quand la recherche web est disponible, propose pour chaque correction une vidéo de démonstration
+(YouTube de préférence) avec son lien, en privilégiant les chaînes d'enseignement reconnues.
+Si une vidéo précise n'est pas certaine, donne plutôt un lien de recherche YouTube
+(https://www.youtube.com/results?search_query=...) plutôt qu'une URL inventée.`;
 
 function nettoyerBase64(dataURL) {
   const i = dataURL.indexOf(',');
@@ -217,11 +223,26 @@ export async function analyserAvecClaude({
  * @param {{apiKey: string, conversation: Array, question: string, avecWeb: boolean, onStatut: Function}} opts
  */
 export async function poserQuestion({
-  apiKey, conversation, question, avecWeb = true, onStatut = () => {},
+  apiKey, conversation, question, analyse = null, avecWeb = true, onStatut = () => {},
 }) {
   if (!apiKey) throw new Error('Clé API manquante.');
   if (!question?.trim()) throw new Error('Question vide.');
-  if (!conversation?.length) throw new Error("Lance d'abord l'analyse IA.");
+
+  // Première question sans analyse complète préalable : on amorce la conversation avec
+  // le profil et les mesures, pour que l'entraîneur réponde en connaissance de cause.
+  if (!conversation?.length) {
+    if (!analyse?.frappes?.length) {
+      throw new Error("Analyse d'abord une vidéo, ou rouvre une analyse enregistrée : " +
+        "sans mesures, l'entraîneur répondrait dans le vide.");
+    }
+    conversation = [{
+      role: 'user',
+      content: [{ type: 'text', text: construirePrompt({ analyse, avecWeb, nbImages: 0 }) }],
+    }, {
+      role: 'assistant',
+      content: [{ type: 'text', text: 'Mesures et profil bien reçus. Je réponds aux questions du joueur.' }],
+    }];
+  }
 
   const base = {
     model: MODELE_IA,

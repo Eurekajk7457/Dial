@@ -4,7 +4,7 @@
  */
 
 import { P, angle, dist, milieu, inclinaisonBuste, lisser } from './pose.js';
-import { SEUILS, SEUILS_REGULARITE } from './knowledge.js';
+import { SEUILS, SEUILS_REGULARITE, EXPLICATIONS } from './knowledge.js';
 
 /* ------------------------------------------------------------------ */
 /* Utilitaires                                                         */
@@ -270,6 +270,62 @@ export const LIBELLES_COUP = {
   'volee-coup-droit': 'Volée de coup droit',
   'volee-revers': 'Volée de revers',
 };
+
+/**
+ * Quelles mesures ont un sens pour quel coup. Le service n'a pas de « hauteur d'impact »
+ * comparable au fond de court, et la rotation du tronc ne veut rien dire sur une volée.
+ */
+export function mesuresJugeables(type) {
+  const service = type === 'service';
+  const volee = String(type).startsWith('volee');
+  const liste = ['flexionGenou', 'coudeImpact', 'accompagnement', 'deplacementTete', 'deplacementBassin'];
+  if (!service) liste.unshift('hauteurImpact');
+  if (!service && !volee) liste.splice(1, 0, 'rotationEpaules');
+  return liste;
+}
+
+/** Le seuil à appliquer dépend du coup : un service se juge autrement qu'un coup droit. */
+export function seuilPour(cle, type) {
+  if (type === 'service' && cle === 'coudeImpact') return SEUILS.coudeService;
+  if (type === 'service' && cle === 'flexionGenou') return SEUILS.flexionService;
+  return { hauteurImpact: SEUILS.hauteurImpact, coudeImpact: SEUILS.coudeImpact,
+    rotationEpaules: SEUILS.rotationEpaules, flexionGenou: SEUILS.flexionGenou,
+    accompagnement: SEUILS.accompagnement, deplacementTete: SEUILS.stabiliteTete,
+    deplacementBassin: SEUILS.stabiliteBassin }[cle] || null;
+}
+
+/**
+ * Juge une frappe mesure par mesure : c'est ce qui permet de dire, frappe par frappe,
+ * ce qui va et ce qui ne va pas — plutôt que d'afficher une colonne de chiffres nus.
+ */
+export function verdictsFrappe(frappe) {
+  const type = frappe.type;
+  return mesuresJugeables(type).map((cle) => {
+    const def = EXPLICATIONS.find((e) => e.cle === cle);
+    const seuil = seuilPour(cle, type);
+    if (!def || !seuil) return null;
+
+    const valeur = frappe[cle];
+    const { niveau, sens } = evaluer(valeur, seuil);
+    if (niveau === 'inconnu') return null;
+
+    const message = niveau === 'bon'
+      ? def.bref.bon
+      : (sens < 0 ? def.bref.bas : def.bref.haut) || def.bref.bon;
+
+    return {
+      cle,
+      libelle: def.libelle,
+      valeur,
+      texte: valeur.toFixed(def.decimales) + def.unite,
+      niveau,               // bon / moyen / mauvais
+      sens,                 // -1 sous la zone, +1 au-dessus
+      message,
+      zone: `${seuil.ideal[0]} – ${seuil.ideal[1]}`,
+      requeteVideo: def.requeteVideo,
+    };
+  }).filter(Boolean);
+}
 
 /* ------------------------------------------------------------------ */
 /* 4. Règles de coaching                                               */

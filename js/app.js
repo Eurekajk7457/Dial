@@ -3,12 +3,18 @@
  */
 
 import { echantillonner, SQUELETTE } from './pose.js';
-import { analyser, analyserResultats, LIBELLES_COUP } from './analyse.js';
-import { FONDAMENTAUX, RESSOURCES, RESULTATS_BALLE, PRISES } from './knowledge.js';
+import {
+  analyser, analyserResultats, verdictsFrappe, mesuresJugeables, seuilPour, LIBELLES_COUP,
+} from './analyse.js';
+import {
+  FONDAMENTAUX, RESSOURCES, RESULTATS_BALLE, PRISES,
+  EXPLICATIONS, CHAINES_VIDEO, videoYouTube,
+} from './knowledge.js';
 import { analyserAvecClaude, poserQuestion } from './ai.js';
 import {
   enregistrer, lireHistorique, supprimer, toutEffacer, coupsPresents,
   serie, tracerCourbe, commenterEvolution, MESURES_SUIVIES,
+  lireAnalyse, estRouvrable, actualiserResultats,
 } from './historique.js';
 
 /**
@@ -32,6 +38,7 @@ const etat = {
   fichier: null,
   echantillon: null,
   analyse: null,
+  idHistorique: null,   // entrée d'historique correspondant à l'analyse affichée
   conversation: null,   // mémoire de l'échange avec l'entraîneur IA
 };
 
@@ -105,11 +112,13 @@ function chargerVideo(fichier) {
 $('#btn-reset').addEventListener('click', () => {
   dropzone.hidden = false;
   $('#video-zone').hidden = true;
-  $('#etape-resultats').hidden = true;
-  $('#etape-biblio').hidden = false;
+  $('#etape-resultats').hidden = false;
+  majOnglets(false);
+  ouvrirOnglet('fondamentaux');
   fileInput.value = '';
   etat.echantillon = null;
   etat.analyse = null;
+  etat.idHistorique = null;
 });
 
 $('#btn-aide').addEventListener('click', () => $('#dlg-aide').showModal());
@@ -229,7 +238,9 @@ btnAnalyser.addEventListener('click', async () => {
     progres(1, 'Terminé.');
     setTimeout(() => { $('#progress').hidden = true; }, 800);
 
-    enregistrer(etat.analyse);   // alimente le suivi dans le temps
+    etat.idHistorique = enregistrer(etat.analyse)?.id || null;   // alimente le suivi dans le temps
+    $('#ia-echanges').innerHTML = '';
+    $('#ia-resultat').innerHTML = '';
     afficherResultats(etat.analyse);
     rafraichirOverlay();
   } catch (err) {
@@ -245,9 +256,9 @@ btnAnalyser.addEventListener('click', async () => {
 /* ------------------------------------------------------------------ */
 
 function afficherResultats(a) {
-  $('#etape-resultats').hidden = false;
-  $('#etape-resultats').querySelector('h2').textContent = '2. Résultats';
-  $('#etape-biblio').hidden = true;
+  ouvrirSectionResultats(a.sansImages
+    ? `Analyse du ${dateLongue(a.date)}`
+    : '2. Résultats');
   majOnglets(true);
   ouvrirOnglet('synthese');
   rendreSynthese(a);
@@ -255,7 +266,34 @@ function afficherResultats(a) {
   rendreMesures(a);
   rendreProgression();
   rendreFondamentaux($('#vue-fondamentaux'));
+  rendreSuggestions();
+  document.querySelectorAll('.menu-item').forEach((b) => b.classList.remove('actif'));
   $('#etape-resultats').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/** Recharge une analyse enregistrée et la réaffiche comme si elle venait d'être faite. */
+function rouvrirAnalyse(id) {
+  const a = lireAnalyse(id);
+  if (!a) return;
+  etat.analyse = a;
+  etat.idHistorique = id;
+  etat.echantillon = null;      // les images n'ont jamais été conservées
+  etat.conversation = null;     // nouvelle séance : on repart d'une discussion vierge
+  $('#ia-echanges').innerHTML = '';
+  $('#ia-resultat').innerHTML = '';
+  afficherResultats(a);
+}
+
+/**
+ * Lien vers une recherche YouTube. On ne pointe pas une vidéo précise : les URLs de vidéos
+ * meurent, une recherche non — et elle remonte ce qui se fait de mieux au moment du clic.
+ */
+function lienVideo(requete, texte = 'Voir des vidéos') {
+  const a = el('a', 'lien-yt', `▶ ${echapper(texte)}`);
+  a.href = videoYouTube(requete);
+  a.target = '_blank';
+  a.rel = 'noopener';
+  return a;
 }
 
 function carteConstat(c) {
@@ -265,6 +303,11 @@ function carteConstat(c) {
   node.appendChild(el('h4', null, `${echapper(c.titre)}${badge}`));
   node.appendChild(el('p', null, echapper(c.detail)));
   if (c.exo) node.appendChild(el('p', 'exo', `<strong>Exercice :</strong> ${echapper(c.exo)}`));
+  // Un défaut nommé se corrige mieux en le voyant faire : on propose la vidéo correspondante.
+  if (c.niveau === 'priorite' || c.niveau === 'corriger') {
+    node.appendChild(lienVideo(`tennis ${c.coup || ''} ${c.titre} correction exercice`,
+      'Voir des vidéos sur ce défaut'));
+  }
   return node;
 }
 
@@ -363,11 +406,14 @@ function rendreCoups(a) {
   }
 
   const intro = el('div', 'coups-intro');
-  intro.innerHTML = `
-    <p>Pour chaque frappe, tu peux <strong>avancer image par image</strong> autour de l'impact
-    avec les flèches, et surtout <strong>dire où la balle est partie</strong>.</p>
-    <p class="note">Dès que quatre frappes sont renseignées, dont deux réussies, je peux comparer
-    tes réussites à tes fautes et te dire ce qui change concrètement dans ton geste.</p>`;
+  intro.innerHTML = a.sansImages
+    ? `<p>Analyse rouverte depuis ton historique. Les mesures et les verdicts sont là ;
+       les images, elles, n'ont jamais été enregistrées — ta vidéo n'a pas quitté ton téléphone.</p>`
+    : `<p>Frappe par frappe : ce qui va, ce qui ne va pas, et pourquoi. Tu peux
+       <strong>avancer image par image</strong> autour de l'impact avec les flèches, et
+       <strong>dire où la balle est partie</strong>.</p>
+       <p class="note">Dès que quatre frappes sont renseignées, dont deux réussies, je peux comparer
+       tes réussites à tes fautes et te dire ce qui change concrètement dans ton geste.</p>`;
   vue.appendChild(intro);
 
   const barre = el('div', 'actions');
@@ -394,44 +440,75 @@ function rendreCoups(a) {
   });
 
   const grille = el('div', 'coups-grille');
-  const frames = etat.echantillon.frames;
+  const frames = etat.echantillon?.frames || null;
 
   a.frappes.forEach((f, i) => {
     const carte = el('div', 'coup-carte');
+    if (f.resultat) carte.classList.add('notee');
 
-    const cv = el('canvas');
-    cv.width = 480;
-    cv.height = Math.round(480 * (etat.echantillon.hauteur / etat.echantillon.largeur || 0.5625));
-    carte.appendChild(cv);
+    if (frames && Number.isFinite(f.indice)) {
+      const cv = el('canvas');
+      cv.width = 480;
+      cv.height = Math.round(480 * (etat.echantillon.hauteur / etat.echantillon.largeur || 0.5625));
+      carte.appendChild(cv);
 
-    // Défilement image par image autour de l'impact
-    let indice = f.indice;
-    const nav = el('div', 'nav-images');
-    const prec = el('button', 'ghost', '◀');
-    const suiv = el('button', 'ghost', '▶');
-    const repere = el('span', 'repere');
-    prec.type = suiv.type = 'button';
-    prec.title = 'Image précédente'; suiv.title = 'Image suivante';
+      // Défilement image par image autour de l'impact
+      let indice = f.indice;
+      const nav = el('div', 'nav-images');
+      const prec = el('button', 'ghost', '◀');
+      const suiv = el('button', 'ghost', '▶');
+      const repere = el('span', 'repere');
+      prec.type = suiv.type = 'button';
+      prec.title = 'Image précédente'; suiv.title = 'Image suivante';
 
-    const rafraichir = () => {
-      indice = Math.max(0, Math.min(frames.length - 1, indice));
-      peindreFrame(cv, frames[indice]);
-      const dt = frames[indice].t - f.t;
-      repere.textContent = Math.abs(dt) < 0.001
-        ? 'impact'
-        : `impact ${dt > 0 ? '+' : '−'}${Math.abs(dt).toFixed(2)} s`;
-      repere.classList.toggle('sur-impact', Math.abs(dt) < 0.001);
-      prec.disabled = indice === 0;
-      suiv.disabled = indice === frames.length - 1;
-    };
-    prec.addEventListener('click', () => { indice--; rafraichir(); });
-    suiv.addEventListener('click', () => { indice++; rafraichir(); });
-    nav.append(prec, repere, suiv);
-    carte.appendChild(nav);
+      const rafraichir = () => {
+        indice = Math.max(0, Math.min(frames.length - 1, indice));
+        peindreFrame(cv, frames[indice]);
+        const dt = frames[indice].t - f.t;
+        repere.textContent = Math.abs(dt) < 0.001
+          ? 'impact'
+          : `impact ${dt > 0 ? '+' : '−'}${Math.abs(dt).toFixed(2)} s`;
+        repere.classList.toggle('sur-impact', Math.abs(dt) < 0.001);
+        prec.disabled = indice === 0;
+        suiv.disabled = indice === frames.length - 1;
+      };
+      prec.addEventListener('click', () => { indice--; rafraichir(); });
+      suiv.addEventListener('click', () => { indice++; rafraichir(); });
+      nav.append(prec, repere, suiv);
+      carte.appendChild(nav);
+      rafraichir();
+    }
 
-    const num = (v, d = 2, u = '') => (Number.isFinite(v) ? v.toFixed(d) + u : '—');
     const infos = el('div', 'infos');
     infos.appendChild(el('h4', null, `${i + 1}. ${echapper(LIBELLES_COUP[f.type] || f.type)} — ${f.t.toFixed(1)} s`));
+
+    // Le cœur de la carte : chaque mesure jugée, avec la raison en clair
+    const verdicts = verdictsFrappe(f);
+    const bilan = verdicts.filter((v) => v.niveau !== 'bon');
+    infos.appendChild(el('p', 'bilan-frappe', bilan.length
+      ? `<strong>${bilan.length}</strong> point${bilan.length > 1 ? 's' : ''} à corriger sur cette frappe`
+      : '<strong>Rien à redire</strong> sur cette frappe'));
+
+    const liste = el('ul', 'verdicts');
+    for (const v of verdicts) {
+      const cls = v.niveau === 'bon' ? 'ok' : v.niveau === 'moyen' ? 'moyen' : 'ko';
+      const item = el('li', `verdict ${cls}`);
+      item.innerHTML =
+        `<span class="marque" aria-hidden="true">${v.niveau === 'bon' ? '✓' : '!'}</span>` +
+        `<span class="v-corps"><span class="v-titre">${echapper(v.libelle)}` +
+        `<span class="v-valeur">${echapper(v.texte)}</span></span>` +
+        `<span class="v-message">${echapper(v.message)}</span>` +
+        (v.niveau === 'bon' ? '' : `<span class="v-zone">à viser : ${echapper(v.zone)}</span>`) +
+        `</span>`;
+      liste.appendChild(item);
+    }
+    infos.appendChild(liste);
+
+    if (Number.isFinite(f.vitesse)) {
+      infos.appendChild(el('p', 'note',
+        `Vitesse de la main : ${f.vitesse.toFixed(1)} — à comparer aux autres frappes, ` +
+        `une valeur nettement plus basse trahit une frappe subie.`));
+    }
 
     const choix = el('label', 'resultat', 'Cette balle est partie…');
     const select = el('select');
@@ -441,74 +518,134 @@ function rendreCoups(a) {
     select.addEventListener('change', () => {
       f.resultat = select.value;
       carte.classList.toggle('notee', !!select.value);
+      if (etat.idHistorique) actualiserResultats(etat.idHistorique, a.frappes);
     });
     choix.appendChild(select);
     infos.appendChild(choix);
 
-    infos.appendChild(el('dl', null, `
-      <dt>Hauteur d'impact</dt><dd>${num(f.hauteurImpact)}</dd>
-      <dt>Coude à l'impact</dt><dd>${num(f.coudeImpact, 0, '°')}</dd>
-      <dt>Rotation d'épaules</dt><dd>${num(f.rotationEpaules)}</dd>
-      <dt>Genou fléchi</dt><dd>${num(f.flexionGenou, 0, '°')}</dd>
-      <dt>Accompagnement</dt><dd>${num(f.accompagnement, 1)}</dd>
-      <dt>Vitesse poignet</dt><dd>${num(f.vitesse, 1)}</dd>
-    `));
-
-    const voir = el('button', 'ghost lien-video', 'Voir dans la vidéo');
-    voir.type = 'button';
-    voir.addEventListener('click', () => {
-      video.currentTime = f.t;
-      video.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-    infos.appendChild(voir);
+    if (frames && Number.isFinite(f.indice)) {
+      const voir = el('button', 'ghost lien-video', 'Voir dans la vidéo');
+      voir.type = 'button';
+      voir.addEventListener('click', () => {
+        video.currentTime = f.t;
+        video.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+      infos.appendChild(voir);
+    }
 
     carte.appendChild(infos);
     grille.appendChild(carte);
-    rafraichir();
   });
 
   vue.appendChild(grille);
+  vue.appendChild(el('p', 'note',
+    "Le détail de chaque mesure — ce qu'elle veut dire et comment la corriger — est dans l'onglet « Mesures »."));
+}
+
+/**
+ * Petite jauge : la zone à viser en fond, ta valeur par-dessus.
+ * Un chiffre seul ne dit pas s'il est bon ; une position sur une règle, si.
+ */
+function jauge(valeur, seuil, decimales, unite) {
+  const [i0, i1] = seuil.ideal;
+  const [a0, a1] = seuil.acceptable;
+  const min = Math.min(a0, valeur, i0);
+  const max = Math.max(a1, valeur, i1);
+  const etendue = (max - min) || 1;
+  const marge = etendue * 0.08;
+  const bas = min - marge;
+  const haut = max + marge;
+  const pos = (v) => ((v - bas) / (haut - bas)) * 100;
+
+  const dedans = valeur >= i0 && valeur <= i1;
+  const bloc = el('div', `jauge ${dedans ? 'ok' : 'ko'}`);
+  bloc.innerHTML =
+    `<div class="piste">` +
+    `<div class="zone" style="left:${pos(i0).toFixed(1)}%;width:${(pos(i1) - pos(i0)).toFixed(1)}%"></div>` +
+    `<div class="curseur" style="left:${pos(valeur).toFixed(1)}%"></div>` +
+    `</div>` +
+    `<div class="jauge-legende"><span>${echapper(i0 + unite)}</span>` +
+    `<span class="jauge-toi">toi : ${echapper(valeur.toFixed(decimales) + unite)}</span>` +
+    `<span>${echapper(i1 + unite)}</span></div>`;
+  return bloc;
 }
 
 function rendreMesures(a) {
   const vue = $('#vue-mesures');
   vue.innerHTML = '';
 
-  const lignes = [
-    ['Hauteur d\'impact (0 = hanche, 1 = épaule)', 'hauteurImpact', 2],
-    ['Angle du coude à l\'impact (°)', 'coudeImpact', 0],
-    ['Indice de rotation d\'épaules (bas = mieux)', 'rotationEpaules', 2],
-    ['Genou le plus fléchi à l\'armé (°)', 'flexionGenou', 0],
-    ['Accompagnement (largeurs d\'épaules)', 'accompagnement', 1],
-    ['Déplacement de la tête à l\'impact', 'deplacementTete', 2],
-    ['Déplacement du bassin à l\'impact', 'deplacementBassin', 2],
-    ['Vitesse de poignet au pic (l.é./s)', 'vitesse', 1],
-  ];
-
   if (!a.groupes.length) {
     vue.appendChild(el('p', 'note', 'Pas de mesure disponible.'));
     return;
   }
 
+  vue.appendChild(el('p', null,
+    "Chaque mesure est expliquée : ce qu'elle regarde, pourquoi ça compte pour ton tennis, " +
+    "et quoi faire si tu es hors de la zone. La valeur affichée est la médiane de tes frappes."));
+
+  for (const g of a.groupes) {
+    vue.appendChild(el('h3', null, `${echapper(g.libelle)} — ${g.nombre} frappe(s)`));
+
+    const jugeables = mesuresJugeables(g.type);
+    for (const def of EXPLICATIONS) {
+      const valeur = g.medianes[def.cle];
+      if (!Number.isFinite(valeur)) continue;
+      if (def.seuil && !jugeables.includes(def.cle)) continue;   // sans objet pour ce coup
+
+      const seuil = def.seuil ? seuilPour(def.cle, g.type) : null;
+      const dedans = seuil ? valeur >= seuil.ideal[0] && valeur <= seuil.ideal[1] : null;
+
+      const carte = el('details', `mesure ${dedans === null ? '' : dedans ? 'ok' : 'ko'}`);
+      const etat_ = dedans === null ? 'repère' : dedans ? 'dans la zone' : 'hors zone';
+      carte.innerHTML = `<summary>
+        <span class="m-nom">${echapper(def.libelle)}</span>
+        <span class="m-valeur">${echapper(valeur.toFixed(def.decimales) + def.unite)}</span>
+        <span class="m-etat">${echapper(etat_)}</span>
+      </summary>`;
+
+      if (seuil) carte.appendChild(jauge(valeur, seuil, def.decimales, def.unite));
+
+      const corps = el('div', 'm-corps');
+      corps.innerHTML =
+        `<p><strong>Ce que ça mesure.</strong> ${echapper(def.quoi)}</p>` +
+        `<p class="note">Échelle : ${echapper(def.echelle)}.</p>` +
+        `<p><strong>Pourquoi ça compte.</strong> ${echapper(def.pourquoi)}</p>`;
+
+      if (seuil && !dedans) {
+        const sens = valeur < seuil.ideal[0] ? 'tropBas' : 'tropHaut';
+        corps.innerHTML += `<p class="m-diagnostic"><strong>Chez toi.</strong> ${echapper(def[sens])}</p>`;
+      } else if (seuil) {
+        corps.innerHTML += `<p class="m-diagnostic ok"><strong>Chez toi.</strong> Tu es dans la zone visée ` +
+          `(${echapper(seuil.ideal[0] + def.unite)} à ${echapper(seuil.ideal[1] + def.unite)}). Rien à changer ici.</p>`;
+      }
+      if (def.exercice) corps.innerHTML += `<p class="exo"><strong>Exercice :</strong> ${echapper(def.exercice)}</p>`;
+      corps.appendChild(lienVideo(def.requeteVideo, 'Voir des vidéos sur ce point'));
+      carte.appendChild(corps);
+      vue.appendChild(carte);
+    }
+  }
+
+  // Le tableau brut reste accessible pour qui veut tout voir d'un coup d'œil
+  const tout = el('details', 'brut');
+  tout.innerHTML = '<summary>Voir tous les chiffres dans un tableau</summary>';
   const t = el('table');
   t.innerHTML = `<thead><tr><th>Mesure (médiane)</th>${
     a.groupes.map((g) => `<th class="num">${echapper(g.libelle)} (${g.nombre})</th>`).join('')
   }</tr></thead><tbody>${
-    lignes.map(([lbl, cle, dec]) => `<tr><td>${echapper(lbl)}</td>${
+    EXPLICATIONS.map((def) => `<tr><td>${echapper(def.libelle)}</td>${
       a.groupes.map((g) => {
-        const v = g.medianes[cle];
-        return `<td class="num">${Number.isFinite(v) ? v.toFixed(dec) : '—'}</td>`;
+        const v = g.medianes[def.cle];
+        return `<td class="num">${Number.isFinite(v) ? v.toFixed(def.decimales) + def.unite : '—'}</td>`;
       }).join('')
     }</tr>`).join('')
   }</tbody>`;
   const cadreMesures = el('div', 'table-scroll');
   cadreMesures.appendChild(t);
-  vue.appendChild(cadreMesures);
-
-  vue.appendChild(el('p', 'note',
+  tout.appendChild(cadreMesures);
+  tout.appendChild(el('p', 'note',
     "Les distances sont exprimées en largeurs d'épaules pour rester comparables d'une vidéo à l'autre, " +
-    "quelle que soit la distance de la caméra. L'indice de rotation compare la largeur d'épaules à l'armé " +
-    "et de face : plus il est bas, plus le buste est de profil."));
+    "quelle que soit la distance de la caméra."));
+  vue.appendChild(tout);
 }
 
 /* ------------------------------------------------------------------ */
@@ -585,29 +722,44 @@ function rendreProgression() {
     dessiner();
   }
 
-  // Tableau : lisible sans voir la courbe, et seul endroit pour supprimer une entrée
+  // Liste des séances : c'est d'ici qu'on rouvre une analyse passée, ou qu'on l'efface
   vue.appendChild(el('h3', null, 'Tes analyses'));
-  const t = el('table');
-  t.innerHTML = `<thead><tr><th>Date</th><th>Coups</th><th class="num">Frappes</th>
-    <th class="num">Score</th><th></th></tr></thead><tbody>${
-    [...liste].reverse().map((e) => `<tr data-id="${echapper(e.id)}">
-      <td>${echapper(dateCompacte(e.date))}</td>
-      <td>${echapper((e.groupes || []).map((g) => `${g.libelle} ×${g.nombre}`).join(', ') || '—')}</td>
-      <td class="num">${e.nbFrappes}</td>
-      <td class="num">${e.score ?? '—'}</td>
-      <td><button type="button" class="ghost mini" data-suppr="${echapper(e.id)}">Supprimer</button></td>
-    </tr>`).join('')
-  }</tbody>`;
-  const cadre = el('div', 'table-scroll');
-  cadre.appendChild(t);
-  vue.appendChild(cadre);
+  const journal = el('div', 'journal');
 
-  t.addEventListener('click', (ev) => {
-    const id = ev.target?.dataset?.suppr;
-    if (!id) return;
-    supprimer(id);
-    rendreProgression();
-  });
+  for (const e of [...liste].reverse()) {
+    const carte = el('div', 'seance');
+    if (etat.idHistorique === e.id) carte.classList.add('ouverte');
+
+    const coups = (e.groupes || []).map((g) => `${g.libelle} ×${g.nombre}`).join(', ') || '—';
+    carte.appendChild(el('div', 'seance-tete',
+      `<span class="s-date">${echapper(dateLongue(e.date))}</span>` +
+      `<span class="s-score">${e.score ?? '—'}<small>/100</small></span>`));
+    carte.appendChild(el('p', 'note',
+      `${echapper(coups)} — ${e.nbFrappes} frappe(s) sur ${Number(e.duree || 0).toFixed(0)} s` +
+      (e.profil?.objectif ? ` · objectif : « ${echapper(e.profil.objectif)} »` : '')));
+
+    const actions = el('div', 'actions');
+    if (estRouvrable(e)) {
+      const ouvrir = el('button', 'primary mini', 'Ouvrir cette analyse');
+      ouvrir.type = 'button';
+      ouvrir.addEventListener('click', () => rouvrirAnalyse(e.id));
+      actions.appendChild(ouvrir);
+    } else {
+      actions.appendChild(el('span', 'note', 'Analyse ancienne : seuls les chiffres du suivi ont été gardés.'));
+    }
+    const suppr = el('button', 'ghost mini', 'Supprimer');
+    suppr.type = 'button';
+    suppr.addEventListener('click', () => {
+      if (!confirm('Supprimer cette analyse ?')) return;
+      supprimer(e.id);
+      if (etat.idHistorique === e.id) { etat.idHistorique = null; etat.analyse = null; majOnglets(false); }
+      rendreProgression();
+    });
+    actions.appendChild(suppr);
+    carte.appendChild(actions);
+    journal.appendChild(carte);
+  }
+  vue.appendChild(journal);
 
   const effacer = el('button', 'ghost', 'Effacer tout mon historique');
   effacer.type = 'button';
@@ -685,8 +837,26 @@ function rendreFondamentaux(cible) {
       <ul>${f.points.map((p) => `<li>${echapper(p)}</li>`).join('')}</ul>
       <strong>Erreurs fréquentes</strong>
       <ul>${f.erreurs.map((p) => `<li>${echapper(p)}</li>`).join('')}</ul>`;
+
+    if (f.videos?.length) {
+      d.appendChild(el('strong', null, 'À regarder en vidéo'));
+      const liens = el('div', 'liste-videos');
+      for (const v of f.videos) liens.appendChild(lienVideo(v.requete, v.titre));
+      d.appendChild(liens);
+    }
     cible.appendChild(d);
   }
+
+  cible.appendChild(el('h3', null, 'Des chaînes qui expliquent bien'));
+  const chaines = el('ul', 'chaines');
+  for (const c of CHAINES_VIDEO) {
+    const li = el('li');
+    li.appendChild(lienVideo(c.requete, c.nom));
+    li.appendChild(el('span', 'note', ` — ${echapper(c.pourquoi)}`));
+    chaines.appendChild(li);
+  }
+  cible.appendChild(chaines);
+
   cible.appendChild(el('h3', null, 'Pour aller plus loin'));
   cible.appendChild(el('ul', null,
     RESSOURCES.map((r) => `<li><a href="${echapper(r.url)}" target="_blank" rel="noopener">${echapper(r.titre)}</a></li>`).join('')));
@@ -705,17 +875,84 @@ function ouvrirOnglet(nom) {
 }
 
 /**
- * Masque les onglets qui exigent une analyse tant qu'aucune vidéo n'a été traitée,
- * pour que le suivi reste consultable en ouvrant simplement l'app.
+ * Tous les onglets restent visibles en permanence : les cacher donnait l'impression
+ * que l'app avait perdu des fonctions. Sans analyse chargée, chacun explique à la place
+ * ce qu'il faut faire pour le remplir.
  */
 function majOnglets(avecAnalyse) {
-  document.querySelectorAll('.onglet').forEach((b) => {
-    b.hidden = !avecAnalyse && ONGLETS_ANALYSE.includes(b.dataset.vue);
-  });
+  document.querySelectorAll('.onglet').forEach((b) => { b.hidden = false; });
+  if (avecAnalyse) return;
+
+  for (const nom of ONGLETS_ANALYSE) {
+    if (nom === 'ia') continue;   // la discussion reste utilisable sans analyse en cours
+    const vue = $(`#vue-${nom}`);
+    vue.innerHTML = '';
+    vue.appendChild(messageSansAnalyse());
+  }
+}
+
+/** Invite affichée dans les onglets qui attendent une vidéo ou une analyse rouverte. */
+function messageSansAnalyse() {
+  const bloc = el('div', 'vide');
+  bloc.appendChild(el('p', null,
+    "Rien à afficher ici pour l'instant : il faut d'abord analyser une vidéo, " +
+    "ou rouvrir une analyse déjà enregistrée."));
+
+  const actions = el('div', 'actions');
+  const bVideo = el('button', 'primary', 'Analyser une vidéo');
+  bVideo.type = 'button';
+  bVideo.addEventListener('click', () => allerA('video'));
+  actions.appendChild(bVideo);
+
+  if (lireHistorique().some(estRouvrable)) {
+    const bHisto = el('button', 'ghost', 'Rouvrir une analyse');
+    bHisto.type = 'button';
+    bHisto.addEventListener('click', () => allerA('analyses'));
+    actions.appendChild(bHisto);
+  }
+  bloc.appendChild(actions);
+  return bloc;
 }
 
 document.querySelectorAll('.onglet').forEach((btn) => {
   btn.addEventListener('click', () => ouvrirOnglet(btn.dataset.vue));
+});
+
+/* ------------------------------------------------------------------ */
+/* Menu principal                                                      */
+/* ------------------------------------------------------------------ */
+
+/** Rend la section résultats visible et lui donne le bon titre. */
+function ouvrirSectionResultats(titre) {
+  $('#etape-resultats').hidden = false;
+  $('#etape-resultats').querySelector('h2').textContent = titre;
+}
+
+/**
+ * Point d'entrée unique du menu : quelle que soit la destination, on remet l'app
+ * dans un état cohérent (bonne section visible, bon onglet ouvert, page positionnée).
+ */
+function allerA(destination) {
+  document.querySelectorAll('.menu-item').forEach((b) => {
+    b.classList.toggle('actif', b.dataset.aller === destination);
+  });
+
+  const cible = { video: '#etape-import', analyses: '#etape-resultats',
+    question: '#etape-resultats', fiches: '#etape-resultats' }[destination];
+
+  if (destination === 'video') {
+    $('#etape-import').hidden = false;
+  } else {
+    ouvrirSectionResultats(etat.analyse ? '2. Résultats' : 'Ton espace');
+    ouvrirOnglet({ analyses: 'progression', question: 'ia', fiches: 'fondamentaux' }[destination]);
+    if (destination === 'analyses') rendreProgression();
+    if (destination === 'fiches') rendreFondamentaux($('#vue-fondamentaux'));
+  }
+  $(cible)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+document.querySelectorAll('.menu-item').forEach((btn) => {
+  btn.addEventListener('click', () => allerA(btn.dataset.aller));
 });
 
 /* ------------------------------------------------------------------ */
@@ -839,9 +1076,9 @@ $('#btn-ia').addEventListener('click', async () => {
     sortie.innerHTML = markdown(texte);
     if (sources.length) sortie.appendChild(blocSources(sources));
 
-    $('#ia-discussion').hidden = false;
     $('#ia-echanges').innerHTML = '';
-    statut.textContent = 'Analyse terminée. Tu peux maintenant poser des questions ci-dessous.';
+    rendreSuggestions();
+    statut.textContent = 'Analyse terminée. Tu peux maintenant poser des questions en haut de cet onglet.';
   } catch (e) {
     const msg = e.message || String(e);
     err.textContent = /Failed to fetch|NetworkError/i.test(msg)
@@ -877,6 +1114,43 @@ function ajouterEchange(role, contenuHTML) {
   return bloc;
 }
 
+/**
+ * Questions toutes prêtes : sans elles, la zone de saisie reste vide et le joueur
+ * ne sait pas quoi demander. On les construit à partir de ses vrais défauts.
+ */
+function rendreSuggestions() {
+  const zone = $('#ia-suggestions');
+  if (!zone) return;
+  zone.innerHTML = '';
+  const a = etat.analyse;
+  if (!a) {
+    zone.appendChild(el('p', 'note',
+      "L'entraîneur a besoin de tes mesures pour répondre utilement : analyse une vidéo, " +
+      "ou rouvre une analyse enregistrée depuis « Mes analyses »."));
+    return;
+  }
+
+  const idees = [];
+  const aCorriger = (a.constats || []).filter((c) => c.niveau === 'priorite' || c.niveau === 'corriger');
+  for (const c of aCorriger.slice(0, 2)) {
+    idees.push(`Explique-moi simplement « ${c.titre.toLowerCase()} » et comment le corriger.`);
+  }
+  if (a.profil?.objectif) idees.push(`${a.profil.objectif} — qu'est-ce que je dois changer ?`);
+  idees.push('Par quoi je commence si je n\'ai que 20 minutes d\'entraînement ?');
+  idees.push('Montre-moi des vidéos qui expliquent mon principal défaut.');
+
+  zone.appendChild(el('p', 'note', 'Ou choisis une question :'));
+  for (const q of idees.slice(0, 4)) {
+    const puce = el('button', 'puce', echapper(q));
+    puce.type = 'button';
+    puce.addEventListener('click', () => {
+      $('#ia-question').value = q;
+      envoyerQuestion();
+    });
+    zone.appendChild(puce);
+  }
+}
+
 async function envoyerQuestion() {
   const champ = $('#ia-question');
   const btn = $('#btn-ia-question');
@@ -885,9 +1159,10 @@ async function envoyerQuestion() {
   err.hidden = true;
 
   if (!question) return;
-  if (!etat.conversation) {
-    err.textContent = "Lance d'abord l'analyse IA au-dessus.";
+  if (!champParCle()) {
+    err.textContent = "Il manque ta clé API Anthropic : ouvre « Réglages et analyse complète » juste en dessous.";
     err.hidden = false;
+    $('.ia-config')?.setAttribute('open', '');
     return;
   }
 
@@ -901,6 +1176,7 @@ async function envoyerQuestion() {
     const { texte, sources, conversation } = await poserQuestion({
       apiKey: champParCle(),
       conversation: etat.conversation,
+      analyse: etat.analyse,
       question,
       avecWeb: $('#ia-web').checked,
     });
@@ -937,15 +1213,12 @@ $('#nom-app').textContent = NOM_APP;
 $('#opt-prise').innerHTML = PRISES
   .map((p) => `<option value="${echapper(p.code)}">${echapper(p.libelle)}</option>`).join('');
 
-rendreFondamentaux($('#biblio'));
+rendreFondamentaux($('#vue-fondamentaux'));
 rendreProgression();
+rendreSuggestions();
+majOnglets(false);
 
-// Sans analyse en cours, on n'affiche que ce qui a du sens : le suivi et les fiches.
-if (lireHistorique().length) {
-  majOnglets(false);
-  ouvrirOnglet('progression');
-  $('#etape-resultats').hidden = false;
-  $('#etape-resultats').querySelector('h2').textContent = '2. Ton suivi';
-} else {
-  majOnglets(true);
-}
+// Au démarrage, tous les onglets sont là. On ouvre celui qui a quelque chose à montrer :
+// le suivi si des analyses existent, les fiches sinon.
+ouvrirSectionResultats('Ton espace');
+ouvrirOnglet(lireHistorique().length ? 'progression' : 'fondamentaux');

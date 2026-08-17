@@ -63,7 +63,6 @@ a:hover { color: var(--primaire-fonce); }
   padding: .9rem 1.25rem;
   background: linear-gradient(180deg, #ffffff 0%, #fbfcfa 100%);
   border-bottom: 1px solid var(--line);
-  position: sticky; top: 0; z-index: 10;
 }
 .brand { display: flex; align-items: center; gap: .75rem; }
 .brand h1 { margin: 0; }
@@ -82,7 +81,39 @@ a:hover { color: var(--primaire-fonce); }
   opacity: .85;
 }
 
+/* ---------- Menu principal ---------- */
+
+/* Quatre entrées côte à côte, jamais de défilement : sur un téléphone,
+   une entrée qu'il faut aller chercher en glissant n'existe pas. */
+.menu {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: .35rem;
+  padding: .5rem .75rem; background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 9;
+}
+.menu-item {
+  display: flex; flex-direction: column; align-items: center; gap: .1rem;
+  background: var(--surface-2); color: var(--txt); border: 1px solid var(--line);
+  border-radius: var(--radius-s); padding: .4rem .3rem;
+  min-height: 52px; font-size: .74rem; font-weight: 600; line-height: 1.2;
+}
+.menu-item .ic { font-size: 1.05rem; }
+.menu-item .lb { text-align: center; }
+
+@media (min-width: 620px) {
+  .menu { display: flex; gap: .4rem; padding: .55rem 1rem; }
+  .menu-item {
+    flex-direction: row; gap: .35rem; border-radius: 99px;
+    padding: .5rem .95rem; min-height: 40px; font-size: .88rem; white-space: nowrap;
+  }
+}
+.menu-item:hover { background: var(--primaire-clair); border-color: var(--primaire); }
+.menu-item.actif { background: var(--primaire); border-color: var(--primaire); color: #fff; }
+
 main { max-width: 1000px; margin: 0 auto; padding: 1.25rem; }
+
+/* Le menu collant ne doit jamais recouvrir la cible d'un défilement. */
+.card, .onglets { scroll-margin-top: 76px; }
 
 .card {
   background: var(--surface);
@@ -364,3 +395,151 @@ footer {
   .score-bloc { gap: 1rem; padding: 1rem; }
   .score-cercle { width: 84px; height: 84px; font-size: 1.5rem; }
 }
+
+/* ---------- Onglet vide (pas encore d'analyse) ---------- */
+
+.vide {
+  border: 1px dashed var(--line-forte); border-radius: var(--radius);
+  background: var(--surface-2); padding: 1.5rem 1.25rem; text-align: center;
+}
+.vide p { color: var(--txt2); margin-bottom: 1rem; }
+.vide .actions { justify-content: center; }
+
+/* ---------- Verdicts frappe par frappe ---------- */
+
+.bilan-frappe {
+  margin: 0 0 .6rem; font-size: .88rem; color: var(--txt2);
+  padding-bottom: .55rem; border-bottom: 1px solid var(--line);
+}
+ul.verdicts { list-style: none; margin: 0 0 .8rem; padding: 0; display: grid; gap: .45rem; }
+.verdict {
+  display: flex; gap: .55rem; align-items: flex-start;
+  padding: .5rem .6rem; border-radius: var(--radius-s);
+  border: 1px solid var(--line); background: var(--surface-2);
+}
+.verdict.ok { background: var(--bon-fond); border-color: #d3e8dc; }
+.verdict.moyen { background: var(--attention-fond); border-color: #f0dfc4; }
+.verdict.ko { background: var(--priorite-fond); border-color: #f3cdc9; }
+.verdict .marque {
+  flex: none; width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center; font-size: .75rem; font-weight: 700;
+  color: #fff; background: var(--txt2); margin-top: .1rem;
+}
+.verdict.ok .marque { background: var(--bon); }
+.verdict.moyen .marque { background: var(--attention); }
+.verdict.ko .marque { background: var(--priorite); }
+.v-corps { display: grid; gap: .1rem; min-width: 0; }
+.v-titre {
+  display: flex; justify-content: space-between; gap: .5rem;
+  font-size: .85rem; font-weight: 600;
+}
+.v-valeur { font-variant-numeric: tabular-nums; color: var(--txt2); font-weight: 700; }
+.v-message { font-size: .84rem; color: var(--txt); }
+.v-zone { font-size: .78rem; color: var(--txt2); }
+
+/* ---------- Mesures expliquées ---------- */
+
+details.mesure {
+  border: 1px solid var(--line); border-left: 4px solid var(--line-forte);
+  border-radius: var(--radius-s); background: var(--surface);
+  margin-bottom: .6rem; padding: .2rem .9rem;
+}
+details.mesure.ok { border-left-color: var(--bon); }
+details.mesure.ko { border-left-color: var(--attention); }
+details.mesure > summary {
+  cursor: pointer; list-style: none;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem;
+  padding: .7rem 0; min-height: var(--touche);
+}
+details.mesure > summary::-webkit-details-marker { display: none; }
+details.mesure > summary::after {
+  content: "▾"; color: var(--txt2); font-size: .9rem; transition: transform .15s;
+  margin-left: auto; align-self: center;
+}
+details.mesure[open] > summary::after { transform: rotate(180deg); }
+.m-nom { font-weight: 600; font-size: .95rem; flex: 1 1 auto; }
+.m-valeur { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--txt); }
+.m-etat {
+  font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 700;
+  padding: .12rem .5rem; border-radius: 99px; background: var(--surface-3); color: var(--txt2);
+}
+details.mesure.ok .m-etat { background: var(--bon-fond); color: var(--bon); }
+details.mesure.ko .m-etat { background: var(--attention-fond); color: var(--attention); }
+.m-corps { padding-bottom: .9rem; font-size: .92rem; }
+.m-corps p { margin: 0 0 .6rem; }
+.m-diagnostic {
+  background: var(--attention-fond); border-radius: var(--radius-s);
+  padding: .6rem .7rem; border: 1px solid #f0dfc4;
+}
+.m-diagnostic.ok { background: var(--bon-fond); border-color: #d3e8dc; }
+.m-corps .exo { color: var(--txt2); font-size: .89rem; }
+.m-corps .exo strong { color: var(--txt); }
+
+/* Jauge : la zone visée en fond, ta valeur en curseur */
+.jauge { margin: .2rem 0 .9rem; }
+.piste {
+  position: relative; height: 10px; border-radius: 99px;
+  background: var(--surface-3); border: 1px solid var(--line);
+}
+.piste .zone { position: absolute; top: 0; bottom: 0; background: var(--bon); opacity: .25; border-radius: 99px; }
+.piste .curseur {
+  position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%;
+  transform: translate(-50%, -50%); background: var(--primaire);
+  border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--line-forte);
+}
+.jauge.ko .curseur { background: var(--attention); }
+.jauge-legende {
+  display: flex; justify-content: space-between; gap: .5rem;
+  font-size: .76rem; color: var(--txt2); margin-top: .35rem;
+  font-variant-numeric: tabular-nums;
+}
+.jauge-toi { font-weight: 700; color: var(--txt); }
+
+details.brut { margin-top: 1.4rem; }
+details.brut > summary { cursor: pointer; color: var(--txt2); font-size: .9rem; min-height: var(--touche); padding: .6rem 0; }
+
+/* ---------- Journal des séances ---------- */
+
+.journal { display: grid; gap: .7rem; margin-bottom: 1.2rem; }
+.seance {
+  border: 1px solid var(--line); border-radius: var(--radius-s);
+  background: var(--surface); padding: .85rem .95rem;
+}
+.seance.ouverte { border-color: var(--primaire); background: var(--primaire-clair); }
+.seance-tete { display: flex; justify-content: space-between; align-items: baseline; gap: .6rem; }
+.s-date { font-weight: 600; font-size: .95rem; }
+.s-score { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--primaire); font-size: 1.1rem; }
+.s-score small { font-size: .7rem; color: var(--txt2); font-weight: 600; }
+.seance .note { margin: .25rem 0 .7rem; }
+
+/* ---------- Vidéos ---------- */
+
+a.lien-yt {
+  display: inline-block; margin: .15rem .4rem .15rem 0;
+  padding: .45rem .75rem; border-radius: 99px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: .86rem; font-weight: 600; text-decoration: none; color: var(--primaire);
+}
+a.lien-yt:hover { background: var(--primaire-clair); border-color: var(--primaire); }
+.liste-videos { display: flex; flex-wrap: wrap; gap: .3rem; margin: .4rem 0 .6rem; }
+ul.chaines { padding-left: 0; list-style: none; }
+ul.chaines li { margin-bottom: .5rem; }
+
+/* ---------- Questions suggérées ---------- */
+
+.suggestions { margin-top: .9rem; display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.suggestions .note { width: 100%; margin: 0 0 .1rem; }
+.puce {
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--txt);
+  border-radius: 99px; padding: .45rem .8rem; font-size: .85rem; font-weight: 500;
+  min-height: 38px; text-align: left;
+}
+.puce:hover { background: var(--primaire-clair); border-color: var(--primaire); }
+
+/* La discussion est en tête de l'onglet IA : elle n'a plus besoin de séparateur haut. */
+.ia-discussion { margin-top: 0; border-top: none; padding-top: 0; }
+details.ia-config {
+  margin-top: 1.6rem; border: 1px solid var(--line); border-radius: var(--radius-s);
+  background: var(--surface-2); padding: .7rem .9rem;
+}
+details.ia-config > summary { cursor: pointer; color: var(--txt2); font-size: .9rem; min-height: var(--touche); padding: .6rem 0; }

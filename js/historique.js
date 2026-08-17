@@ -39,20 +39,58 @@ export function lireHistorique() {
   }
 }
 
+/**
+ * Écrit la liste. Si le navigateur refuse (quota plein), on allège : d'abord en jetant
+ * le détail des analyses les plus anciennes — le résumé, lui, alimente la courbe et
+ * ne doit jamais disparaître — puis en supprimant les plus vieilles entrées.
+ */
 function ecrire(liste) {
+  const garder = liste.slice(-MAX_ENTREES);
+
+  for (let allegees = 0; allegees <= garder.length; allegees++) {
+    const essai = garder.map((e, i) => (i < allegees ? { ...e, detail: undefined } : e));
+    try {
+      localStorage.setItem(CLE, JSON.stringify(essai));
+      return true;
+    } catch { /* on retente en allégeant davantage */ }
+  }
+  // Toujours refusé : on ne garde que les vingt dernières, sans détail.
   try {
-    localStorage.setItem(CLE, JSON.stringify(liste.slice(-MAX_ENTREES)));
+    localStorage.setItem(CLE, JSON.stringify(
+      garder.slice(-20).map((e) => ({ ...e, detail: undefined }))));
     return true;
   } catch {
     return false;
   }
 }
 
-/** Résumé compact d'une analyse — pas d'images, pas de points, juste les chiffres. */
+/** Mesures conservées frappe par frappe, pour pouvoir rouvrir une analyse plus tard. */
+const MESURES_FRAPPE = [
+  'hauteurImpact', 'coudeImpact', 'rotationEpaules', 'flexionGenou', 'accompagnement',
+  'deplacementTete', 'deplacementBassin', 'vitesse', 'hauteurBrasLibre', 'oscillation',
+];
+
+/**
+ * Résumé compact d'une analyse, plus le détail nécessaire pour la rouvrir telle quelle.
+ * Ce qui n'est pas gardé : les images (trop lourdes) et les points de posture image par image.
+ */
 export function enregistrer(analyse) {
   if (!analyse?.frappes?.length) return null;
 
+  const detail = {
+    tauxDetection: analyse.tauxDetection,
+    mainDominante: analyse.mainDominante,
+    duree: analyse.duree,
+    constats: analyse.constats || [],
+    frappes: analyse.frappes.map((f) => {
+      const garde = { t: f.t, type: f.type, resultat: f.resultat || '' };
+      for (const m of MESURES_FRAPPE) if (Number.isFinite(f[m])) garde[m] = f[m];
+      return garde;
+    }),
+  };
+
   const entree = {
+    detail,
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     date: new Date().toISOString(),
     score: analyse.score,
@@ -72,6 +110,47 @@ export function enregistrer(analyse) {
   const liste = lireHistorique();
   liste.push(entree);
   return ecrire(liste) ? entree : null;
+}
+
+/**
+ * Réenregistre le devenir des balles renseigné après coup : sans ça, une analyse rouverte
+ * aurait perdu les balles que le joueur avait pris la peine de noter.
+ */
+export function actualiserResultats(id, frappes) {
+  const liste = lireHistorique();
+  const e = liste.find((x) => x.id === id);
+  if (!e?.detail?.frappes) return;
+  e.detail.frappes.forEach((f, i) => { f.resultat = frappes[i]?.resultat || ''; });
+  ecrire(liste);
+}
+
+/**
+ * Reconstruit une analyse enregistrée pour la réafficher dans tous les onglets.
+ * `sansImages` prévient l'interface : le défilement image par image n'est plus possible,
+ * la vidéo d'origine n'ayant jamais quitté l'appareil ni été conservée.
+ */
+export function lireAnalyse(id) {
+  const e = lireHistorique().find((x) => x.id === id);
+  if (!e?.detail) return null;
+
+  return {
+    id: e.id,
+    date: e.date,
+    sansImages: true,
+    score: e.score,
+    duree: e.detail.duree ?? e.duree,
+    tauxDetection: e.detail.tauxDetection ?? 0,
+    mainDominante: e.detail.mainDominante || 'D',
+    profil: e.profil || {},
+    constats: e.detail.constats || [],
+    frappes: e.detail.frappes || [],
+    groupes: e.groupes || [],
+  };
+}
+
+/** Une analyse rouvrable garde son détail ; les plus anciennes peuvent l'avoir perdu. */
+export function estRouvrable(entree) {
+  return !!entree?.detail?.frappes?.length;
 }
 
 export function supprimer(id) {

@@ -13,8 +13,13 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
 1. Tu réponds à quelques questions (main dominante et coup filmé sont obligatoires).
 2. La posture est détectée image par image, **dans ton navigateur**.
 3. Tu obtiens un score, des constats classés par priorité, un exercice pour chacun.
-4. Tu peux dire où chaque balle est partie : l'app compare alors tes réussites à tes fautes.
-5. Chaque analyse est enregistrée : l'onglet **Progression** trace ton évolution.
+4. **Frappe par frappe**, chaque mesure est jugée : ce qui va, ce qui ne va pas, et pourquoi.
+5. Chaque mesure est **expliquée** : ce qu'elle regarde, pourquoi ça compte, quoi faire si tu es hors zone.
+6. Tu peux dire où chaque balle est partie : l'app compare alors tes réussites à tes fautes.
+7. Chaque analyse est enregistrée et **rouvrable** : le menu **Mes analyses** te rend une séance passée
+   dans tous ses onglets, avec la courbe d'évolution.
+8. Un **entraîneur IA** répond à tes questions en connaissant tes mesures, sans avoir à lancer
+   l'analyse complète au préalable.
 
 ## En détail
 
@@ -38,6 +43,15 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
    trace une mesure au fil des séances, avec la zone visée en fond plutôt qu'une flèche « ça monte ».
 10. **Ralenti** image par image autour de chaque impact, et **export du rapport** en texte, à montrer
     à un entraîneur.
+11. **Verdicts par frappe** : chaque mesure comparée à sa zone cible, avec la raison en clair
+    (« geste coupé au contact : tu freines avant la balle ») et la zone à viser.
+12. **Mesures expliquées** : une fiche dépliable par mesure — ce que ça mesure, l'échelle, pourquoi
+    ça compte, le diagnostic personnel, un exercice, une jauge situant ta valeur dans la zone visée.
+13. **Vidéos** : chaque fiche technique, chaque défaut relevé et chaque mesure renvoie vers une
+    recherche YouTube ciblée. On ne pointe jamais une URL de vidéo précise : elle finit toujours par
+    mourir, alors qu'une recherche reste valable et remonte ce qui se fait de mieux au moment du clic.
+14. **Menu** en quatre entrées (Analyser / Mes analyses / Questions / Apprendre), visibles sans
+    défilement même sur un petit écran.
 
 ## Utilisation
 
@@ -81,6 +95,9 @@ Modèle utilisé : `claude-opus-5`, appelé directement depuis le navigateur
 > Cette approche « clé côté client » convient à un usage personnel. Pour une app publique,
 > il faut passer les appels par un petit backend qui garde la clé côté serveur.
 
+La première question posée à l'entraîneur amorce elle-même la conversation avec le profil et les
+mesures : pas besoin de lancer l'analyse complète (avec images) avant de discuter.
+
 ## Comment filmer
 
 - De côté (perpendiculaire à la ligne de fond) pour le fond de court ; de face ou 3/4 arrière pour le service.
@@ -92,16 +109,16 @@ Modèle utilisé : `claude-opus-5`, appelé directement depuis le navigateur
 ## Structure
 
 ```
-index.html          Interface et étapes
-cadence.html    Copie autonome en un seul fichier (générée, ne pas éditer à la main)
+index.html          Interface, menu et onglets
+cadence.html        Copie autonome en un seul fichier (générée, ne pas éditer à la main)
 build-fichier-unique.mjs  Génère cadence.html depuis les sources
 css/styles.css      Thème clair, contrastes AA, responsive
 js/pose.js          Chargement MediaPipe, échantillonnage vidéo, géométrie
 js/analyse.js       Séries temporelles, détection de frappes, mesures, moteur de règles
-js/knowledge.js     Référentiel technique + seuils de coaching
-js/historique.js    Suivi dans le temps (localStorage) et courbe d'évolution
+js/knowledge.js     Référentiel technique, seuils de coaching, explications des mesures, vidéos
+js/historique.js    Suivi dans le temps (localStorage), réouverture d'une analyse, courbe d'évolution
 js/ai.js            Appel API Claude (vision + recherche web)
-js/app.js           Interface, rendu, squelette, onglets
+js/app.js           Interface, menu, rendu, verdicts, squelette, onglets
 ```
 
 ## Limites, dites franchement
@@ -113,6 +130,8 @@ js/app.js           Interface, rendu, squelette, onglets
 - La classification volée / coup de fond est heuristique et peut se tromper sur des gestes courts.
 - Les seuils du référentiel sont des repères pour joueur amateur à confirmé, pas des vérités absolues.
 - Le premier chargement nécessite internet (modèle MediaPipe depuis un CDN) ; ensuite le navigateur le met en cache.
+- Les analyses rouvertes n'ont **pas d'images** : seules les mesures sont conservées, la vidéo n'ayant
+  jamais quitté l'appareil. Compter environ 9 Ko par analyse enregistrée.
 
 Ce n'est pas un substitut à un entraîneur : c'est un outil pour repérer des tendances et savoir
 quoi lui montrer.
