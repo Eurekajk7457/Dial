@@ -39,28 +39,87 @@
         <canvas id="overlay" class="overlay"></canvas>
       </div>
 
+      <h3 class="titre-bloc">Parle-moi de cette vidéo</h3>
+      <p class="note">
+        Plus tu m'en dis, plus l'analyse est juste. Les deux premières questions comptent
+        vraiment : sans elles je dois deviner, et je me trompe.
+      </p>
+
       <div class="options">
-        <label>Main dominante
-          <select id="opt-main">
-            <option value="auto" selected>Détection auto</option>
+        <label class="requis">Tu joues de quelle main ? <span aria-hidden="true">*</span>
+          <select id="opt-main" required>
+            <option value="" selected disabled>— à renseigner —</option>
             <option value="right">Droitier</option>
             <option value="left">Gaucher</option>
+            <option value="auto">Je ne sais pas, devine</option>
           </select>
         </label>
-        <label>Début (s)
-          <input type="number" id="opt-debut" value="0" min="0" step="0.5">
+        <label class="requis">Quel coup as-tu filmé ? <span aria-hidden="true">*</span>
+          <select id="opt-coup" required>
+            <option value="" selected disabled>— à renseigner —</option>
+            <option value="coup-droit">Coup droit</option>
+            <option value="revers">Revers</option>
+            <option value="service">Service</option>
+            <option value="volee-coup-droit">Volée de coup droit</option>
+            <option value="volee-revers">Volée de revers</option>
+            <option value="auto">Un peu de tout, devine</option>
+          </select>
         </label>
-        <label>Durée analysée (s)
-          <input type="number" id="opt-duree" value="30" min="3" max="120" step="1">
+        <label>Ton revers
+          <select id="opt-revers">
+            <option value="deux" selected>À deux mains</option>
+            <option value="une">À une main</option>
+          </select>
         </label>
-        <label>Images / seconde
-          <select id="opt-fps">
-            <option value="8">8 (rapide)</option>
-            <option value="12" selected>12 (équilibré)</option>
-            <option value="20">20 (précis, plus lent)</option>
+        <label>La caméra était
+          <select id="opt-angle">
+            <option value="cote" selected>Sur le côté</option>
+            <option value="face">Devant toi</option>
+            <option value="dos">Derrière toi</option>
+            <option value="autre">En diagonale / autre</option>
+          </select>
+        </label>
+        <label>Ton niveau
+          <select id="opt-niveau">
+            <option value="debutant">Débutant</option>
+            <option value="intermediaire" selected>Intermédiaire (club)</option>
+            <option value="avance">Avancé / compétition</option>
+          </select>
+        </label>
+        <label>Depuis quand joues-tu ?
+          <select id="opt-anciennete">
+            <option value="" selected>Non précisé</option>
+            <option value="moins1">Moins d'un an</option>
+            <option value="1a3">1 à 3 ans</option>
+            <option value="3a10">3 à 10 ans</option>
+            <option value="plus10">Plus de 10 ans</option>
           </select>
         </label>
       </div>
+
+      <label class="pleine-largeur">Qu'est-ce que tu voudrais améliorer, ou qu'est-ce qui te gêne ?
+        <input type="text" id="opt-objectif"
+               placeholder="ex : mon revers part souvent dans le filet, je me sens en retard sur la balle">
+      </label>
+
+      <details class="reglages">
+        <summary>Réglages avancés (facultatif)</summary>
+        <div class="options">
+          <label>Début (s)
+            <input type="number" id="opt-debut" value="0" min="0" step="0.5">
+          </label>
+          <label>Durée analysée (s)
+            <input type="number" id="opt-duree" value="30" min="3" max="120" step="1">
+          </label>
+          <label>Images / seconde
+            <select id="opt-fps">
+              <option value="8">8 (rapide)</option>
+              <option value="12" selected>12 (équilibré)</option>
+              <option value="20">20 (précis, plus lent)</option>
+            </select>
+          </label>
+        </div>
+      </details>
 
       <div class="actions">
         <button id="btn-analyser" class="primary" type="button">Analyser la technique</button>
@@ -106,21 +165,30 @@
         <label class="ligne">
           <input type="checkbox" id="ia-web" checked> Chercher des références en ligne (recherche web)
         </label>
-        <label>Ton niveau
-          <select id="ia-niveau">
-            <option value="debutant">Débutant</option>
-            <option value="intermediaire" selected>Intermédiaire (club)</option>
-            <option value="avance">Avancé / compétition</option>
-          </select>
-        </label>
-        <label>Objectif / question (facultatif)
-          <input type="text" id="ia-objectif" placeholder="ex : gagner en puissance en coup droit sans perdre le contrôle">
-        </label>
+        <p class="note">
+          Ton profil et ton objectif renseignés à l'étape 1 sont transmis avec les images.
+        </p>
         <button id="btn-ia" class="primary" type="button">Lancer l'analyse IA</button>
         <p id="ia-statut" class="note" hidden></p>
         <p id="ia-erreur" class="erreur" hidden></p>
       </div>
+
       <article id="ia-resultat" class="ia-resultat"></article>
+
+      <div id="ia-discussion" class="ia-discussion" hidden>
+        <h3>Poser une question</h3>
+        <p class="note">
+          L'entraîneur se souvient de ta vidéo et de tout ce qui précède. Demande-lui de préciser
+          un point, de détailler un exercice, ou dis-lui ce que tu ressens sur le court.
+        </p>
+        <div id="ia-echanges"></div>
+        <div class="ia-saisie">
+          <input type="text" id="ia-question"
+                 placeholder="ex : pourquoi ma balle part-elle dans le filet sur ce geste ?">
+          <button id="btn-ia-question" class="primary" type="button">Envoyer</button>
+        </div>
+        <p id="ia-question-erreur" class="erreur" hidden></p>
+      </div>
     </div>
 
     <div class="vue" id="vue-fondamentaux" hidden></div>

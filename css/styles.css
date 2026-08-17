@@ -164,8 +164,37 @@ details.fond summary { cursor: pointer; font-weight: 600; }
 details.fond ul { margin: .6rem 0; padding-left: 1.2rem; }
 details.fond li { margin-bottom: .3rem; font-size: .9rem; }
 
+/* Formulaire de profil */
+.titre-bloc { margin: 1.2rem 0 .3rem; font-size: 1rem; }
+label.requis { color: var(--txt); font-weight: 600; }
+label.requis span { color: var(--acc); }
+label.pleine-largeur { margin-bottom: 1rem; }
+details.reglages {
+  margin-bottom: 1rem; border: 1px solid var(--line);
+  border-radius: 10px; padding: .6rem .8rem; background: var(--bg3);
+}
+details.reglages summary { cursor: pointer; color: var(--txt2); font-size: .88rem; }
+details.reglages .options { margin-bottom: 0; }
+
 /* IA */
 .ia-config { display: grid; gap: .75rem; margin-bottom: 1.2rem; }
+
+/* Discussion de suivi */
+.ia-discussion { margin-top: 1.6rem; border-top: 1px solid var(--line); padding-top: 1.2rem; }
+.ia-discussion h3 { font-size: 1rem; }
+.echange { margin-bottom: 1rem; }
+.echange .qui {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--txt2); margin-bottom: .25rem;
+}
+.echange.moi .texte {
+  background: var(--bg3); border-left: 3px solid var(--acc);
+  border-radius: 8px; padding: .6rem .8rem;
+}
+.echange.coach .texte p:first-child { margin-top: 0; }
+.ia-saisie { display: flex; gap: .5rem; align-items: stretch; }
+.ia-saisie input { margin-top: 0; }
+.ia-saisie button { white-space: nowrap; }
 .ia-resultat { font-size: .95rem; }
 .ia-resultat h3 { margin-top: 1.2rem; }
 .ia-resultat ul { padding-left: 1.2rem; }

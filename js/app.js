@@ -5,7 +5,7 @@
 import { echantillonner, SQUELETTE } from './pose.js';
 import { analyser, LIBELLES_COUP } from './analyse.js';
 import { FONDAMENTAUX, RESSOURCES } from './knowledge.js';
-import { analyserAvecClaude } from './ai.js';
+import { analyserAvecClaude, poserQuestion } from './ai.js';
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, cls, html) => {
@@ -21,7 +21,21 @@ const etat = {
   fichier: null,
   echantillon: null,
   analyse: null,
+  conversation: null,   // mémoire de l'échange avec l'entraîneur IA
 };
+
+/** Ce que le joueur a renseigné sur lui et sur la vidéo. */
+function lireProfil() {
+  return {
+    main: $('#opt-main').value,
+    coup: $('#opt-coup').value,
+    revers: $('#opt-revers').value,
+    angle: $('#opt-angle').value,
+    niveau: $('#opt-niveau').value,
+    anciennete: $('#opt-anciennete').value,
+    objectif: $('#opt-objectif').value.trim(),
+  };
+}
 
 /* ------------------------------------------------------------------ */
 /* Import de la vidéo                                                  */
@@ -160,6 +174,17 @@ function progres(p, label) {
 
 btnAnalyser.addEventListener('click', async () => {
   erreurImport('');
+
+  const profil = lireProfil();
+  if (!profil.main || !profil.coup) {
+    const manquant = !profil.main ? '#opt-main' : '#opt-coup';
+    erreurImport("Réponds d'abord aux deux questions marquées d'une étoile : sans elles, l'analyse " +
+      'se trompe de bras et confond coup droit et revers.');
+    $(manquant).focus();
+    $(manquant).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
   btnAnalyser.disabled = true;
   video.pause();
 
@@ -174,7 +199,8 @@ btnAnalyser.addEventListener('click', async () => {
     etat.echantillon = echantillon;
 
     progres(0.97, 'Calcul des mesures…');
-    etat.analyse = analyser(echantillon, { main: $('#opt-main').value });
+    etat.analyse = analyser(echantillon, profil);
+    etat.conversation = null;   // nouvelle vidéo : on repart d'une discussion vierge
 
     progres(1, 'Terminé.');
     setTimeout(() => { $('#progress').hidden = true; }, 800);
@@ -495,25 +521,21 @@ $('#btn-ia').addEventListener('click', async () => {
   statut.textContent = 'Préparation des images clés…';
 
   try {
-    const { texte, sources } = await analyserAvecClaude({
+    const { texte, sources, conversation } = await analyserAvecClaude({
       apiKey: cle,
       analyse: etat.analyse,
       images: imagesClefs(etat.analyse),
-      niveau: $('#ia-niveau').value,
-      objectif: $('#ia-objectif').value.trim(),
       avecWeb: $('#ia-web').checked,
       onStatut: (m) => { statut.textContent = m; },
     });
 
+    etat.conversation = conversation;
     sortie.innerHTML = markdown(texte);
-    if (sources.length) {
-      const bloc = el('div', 'sources');
-      bloc.innerHTML = '<strong>Sources consultées :</strong><ul>' +
-        sources.map((s) => `<li><a href="${echapper(s.url)}" target="_blank" rel="noopener">${echapper(s.titre)}</a></li>`).join('') +
-        '</ul>';
-      sortie.appendChild(bloc);
-    }
-    statut.textContent = 'Analyse terminée.';
+    if (sources.length) sortie.appendChild(blocSources(sources));
+
+    $('#ia-discussion').hidden = false;
+    $('#ia-echanges').innerHTML = '';
+    statut.textContent = 'Analyse terminée. Tu peux maintenant poser des questions ci-dessous.';
   } catch (e) {
     const msg = e.message || String(e);
     err.textContent = /Failed to fetch|NetworkError/i.test(msg)
@@ -524,6 +546,78 @@ $('#btn-ia').addEventListener('click', async () => {
   } finally {
     btn.disabled = false;
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* Discussion de suivi avec l'entraîneur IA                            */
+/* ------------------------------------------------------------------ */
+
+function blocSources(sources) {
+  const bloc = el('div', 'sources');
+  bloc.innerHTML = '<strong>Sources consultées :</strong><ul>' +
+    sources.map((s) => `<li><a href="${echapper(s.url)}" target="_blank" rel="noopener">${echapper(s.titre)}</a></li>`).join('') +
+    '</ul>';
+  return bloc;
+}
+
+function ajouterEchange(role, contenuHTML) {
+  const bloc = el('div', `echange ${role}`);
+  bloc.appendChild(el('div', 'qui', role === 'moi' ? 'Toi' : 'Entraîneur'));
+  const corps = el('div', 'texte');
+  corps.innerHTML = contenuHTML;
+  bloc.appendChild(corps);
+  $('#ia-echanges').appendChild(bloc);
+  bloc.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  return bloc;
+}
+
+async function envoyerQuestion() {
+  const champ = $('#ia-question');
+  const btn = $('#btn-ia-question');
+  const err = $('#ia-question-erreur');
+  const question = champ.value.trim();
+  err.hidden = true;
+
+  if (!question) return;
+  if (!etat.conversation) {
+    err.textContent = "Lance d'abord l'analyse IA au-dessus.";
+    err.hidden = false;
+    return;
+  }
+
+  champ.value = '';
+  btn.disabled = true;
+  champ.disabled = true;
+  ajouterEchange('moi', echapper(question));
+  const attente = ajouterEchange('coach', '<em>réflexion en cours…</em>');
+
+  try {
+    const { texte, sources, conversation } = await poserQuestion({
+      apiKey: champParCle(),
+      conversation: etat.conversation,
+      question,
+      avecWeb: $('#ia-web').checked,
+    });
+    etat.conversation = conversation;
+    attente.querySelector('.texte').innerHTML = markdown(texte);
+    if (sources.length) attente.appendChild(blocSources(sources));
+  } catch (e) {
+    attente.remove();
+    err.textContent = e.message || String(e);
+    err.hidden = false;
+    champ.value = question;   // on rend la question pour qu'elle ne soit pas perdue
+  } finally {
+    btn.disabled = false;
+    champ.disabled = false;
+    champ.focus();
+  }
+}
+
+const champParCle = () => champCle.value.trim();
+
+$('#btn-ia-question').addEventListener('click', envoyerQuestion);
+$('#ia-question').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); envoyerQuestion(); }
 });
 
 /* ------------------------------------------------------------------ */

@@ -35,12 +35,33 @@ function nettoyerBase64(dataURL) {
   return i >= 0 ? dataURL.slice(i + 1) : dataURL;
 }
 
-function construirePrompt({ analyse, niveau, objectif, avecWeb, nbImages }) {
-  const niveaux = {
+const LIBELLES = {
+  niveau: {
     debutant: 'débutant (moins de 2 ans de pratique)',
     intermediaire: 'intermédiaire, joueur de club',
     avance: 'avancé, joueur de compétition',
-  };
+  },
+  anciennete: {
+    moins1: "moins d'un an de pratique",
+    '1a3': '1 à 3 ans de pratique',
+    '3a10': '3 à 10 ans de pratique',
+    plus10: 'plus de 10 ans de pratique',
+  },
+  angle: {
+    cote: 'sur le côté du joueur',
+    face: 'devant le joueur',
+    dos: 'derrière le joueur',
+    autre: 'en diagonale',
+  },
+  coup: {
+    'coup-droit': 'coup droit', revers: 'revers', service: 'service',
+    'volee-coup-droit': 'volée de coup droit', 'volee-revers': 'volée de revers',
+    auto: 'non précisé (coups variés)',
+  },
+};
+
+function construirePrompt({ analyse, avecWeb, nbImages }) {
+  const p = analyse.profil || {};
 
   const groupes = analyse.groupes.map((g) => {
     const m = g.medianes;
@@ -62,9 +83,23 @@ function construirePrompt({ analyse, niveau, objectif, avecWeb, nbImages }) {
     .map((c) => `- [${c.coup}] ${c.titre} — ${c.detail}`)
     .join('\n') || '- (aucun défaut majeur détecté automatiquement)';
 
+  const declaree = p.main === 'right' || p.main === 'left';
+
   return [
-    `Joueur ${niveaux[niveau] || niveaux.intermediaire}, ${analyse.mainDominante === 'D' ? 'droitier' : 'gaucher'} (détecté).`,
-    objectif ? `Objectif annoncé par le joueur : ${objectif}` : null,
+    `Profil renseigné par le joueur :`,
+    `- Main : ${declaree
+      ? (p.main === 'right' ? 'droitier (déclaré)' : 'gaucher (déclaré)')
+      : `${analyse.mainDominante === 'D' ? 'droitier' : 'gaucher'} — DEVINÉ automatiquement, donc peu fiable`}`,
+    `- Coup filmé : ${LIBELLES.coup[p.coup] || 'non précisé'}`,
+    `- Revers : ${p.revers === 'une' ? 'à une main' : 'à deux mains'}`,
+    `- Niveau : ${LIBELLES.niveau[p.niveau] || LIBELLES.niveau.intermediaire}`,
+    p.anciennete ? `- Expérience : ${LIBELLES.anciennete[p.anciennete]}` : null,
+    `- Caméra placée ${LIBELLES.angle[p.angle] || 'position non précisée'}`,
+    p.objectif ? `- Ce que le joueur veut améliorer, dans ses mots : « ${p.objectif} »` : null,
+    ``,
+    !declaree
+      ? `Attention : la main dominante n'a pas été déclarée. Si les images montrent clairement l'inverse de ce qui est indiqué, signale-le : toutes les mesures d'angle de bras portent alors sur le mauvais bras.`
+      : null,
     ``,
     `Séquence analysée : ${analyse.duree.toFixed(1)} s, ${analyse.frappes.length} frappe(s) détectée(s).`,
     `Qualité de détection de posture : ${Math.round(analyse.tauxDetection * 100)} % des images.`,
@@ -115,8 +150,7 @@ async function appeler({ apiKey, corps }) {
  * @returns {Promise<{texte: string, sources: Array, usage: object}>}
  */
 export async function analyserAvecClaude({
-  apiKey, analyse, images, niveau = 'intermediaire', objectif = '',
-  avecWeb = true, onStatut = () => {},
+  apiKey, analyse, images, avecWeb = true, onStatut = () => {},
 }) {
   if (!apiKey) throw new Error('Clé API manquante.');
 
@@ -130,7 +164,7 @@ export async function analyserAvecClaude({
   });
   contenu.push({
     type: 'text',
-    text: construirePrompt({ analyse, niveau, objectif, avecWeb, nbImages: images.length }),
+    text: construirePrompt({ analyse, avecWeb, nbImages: images.length }),
   });
 
   const messages = [{ role: 'user', content: contenu }];
@@ -146,14 +180,53 @@ export async function analyserAvecClaude({
   }
 
   onStatut('Envoi des images clés à Claude…');
+  return echanger({ apiKey, base, messages, onStatut });
+}
 
+/**
+ * Question de suivi : on renvoie tout l'échange précédent, donc l'entraîneur garde en mémoire
+ * les images de la vidéo et ses propres conseils.
+ * @param {{apiKey: string, conversation: Array, question: string, avecWeb: boolean, onStatut: Function}} opts
+ */
+export async function poserQuestion({
+  apiKey, conversation, question, avecWeb = true, onStatut = () => {},
+}) {
+  if (!apiKey) throw new Error('Clé API manquante.');
+  if (!question?.trim()) throw new Error('Question vide.');
+  if (!conversation?.length) throw new Error("Lance d'abord l'analyse IA.");
+
+  const base = {
+    model: MODELE_IA,
+    max_tokens: 4000,
+    system: SYSTEME + `
+
+Le joueur pose maintenant une question de suivi. Réponds directement à cette question,
+sans reprendre le plan en sections de l'analyse initiale et sans répéter ce que tu as déjà dit.
+Reste concret et bref. Si la réponse dépend de quelque chose que les images ne montrent pas,
+dis-le et demande au joueur la précision qui te manque.`,
+    thinking: { type: 'adaptive' },
+    output_config: { effort: 'high' },
+  };
+  if (avecWeb) {
+    base.tools = [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }];
+  }
+
+  const messages = [...conversation, { role: 'user', content: question.trim() }];
+  onStatut('Question envoyée…');
+  return echanger({ apiKey, base, messages, onStatut });
+}
+
+/** Boucle d'échange commune : relance tant qu'un outil serveur met la réponse en pause. */
+async function echanger({ apiKey, base, messages, onStatut }) {
+  const fil = [...messages];
   let reponse = null;
+
   for (let tour = 0; tour < 6; tour++) {
-    reponse = await appeler({ apiKey, corps: { ...base, messages } });
+    reponse = await appeler({ apiKey, corps: { ...base, messages: fil } });
 
     if (reponse.stop_reason === 'pause_turn') {
       // Un outil serveur (recherche web) a atteint sa limite d'itérations : on relance.
-      messages.push({ role: 'assistant', content: reponse.content });
+      fil.push({ role: 'assistant', content: reponse.content });
       onStatut('Recherche de références en ligne…');
       continue;
     }
@@ -161,7 +234,7 @@ export async function analyserAvecClaude({
   }
 
   if (reponse?.stop_reason === 'refusal') {
-    throw new Error("Claude a décliné cette requête. Réessaie avec une autre séquence ou sans recherche web.");
+    throw new Error("Claude a décliné cette requête. Reformule, ou décoche la recherche web.");
   }
 
   const texte = (reponse?.content || [])
@@ -182,5 +255,8 @@ export async function analyserAvecClaude({
   }
 
   if (!texte) throw new Error("Réponse vide de l'API.");
-  return { texte, sources, usage: reponse.usage };
+
+  // La conversation renvoyée sert de mémoire pour les questions suivantes.
+  fil.push({ role: 'assistant', content: reponse.content });
+  return { texte, sources, usage: reponse.usage, conversation: fil };
 }

@@ -144,7 +144,7 @@ export function detecterFrappes(
 const fenetre = (series, t0, t1) =>
   series.filter((s) => s.ok && s.t >= t0 && s.t <= t1);
 
-export function mesurerFrappe(series, pic, main) {
+export function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
   const contact = series[pic.i];
   if (!contact?.ok) return null;
 
@@ -166,9 +166,13 @@ export function mesurerFrappe(series, pic, main) {
   const ecartTronc = contact.hanches.y - contact.epaules.y;
   const hauteurImpact = ecartTronc > 0 ? (contact.hanches.y - poignet.y) / ecartTronc : NaN;
 
-  // Rotation des épaules : la ligne d'épaules « rétrécit » quand le buste se met de profil
+  // Rotation des épaules : la ligne d'épaules se raccourcit quand le buste se met de profil.
+  // On compare le minimum et le maximum sur toute la frappe plutôt que « armé contre face » :
+  // selon que la caméra est devant ou sur le côté, c'est l'armé ou l'impact qui paraît le plus
+  // large, et seule l'amplitude du changement traduit réellement la rotation.
+  const swMin = Math.min(...global.map((s) => s.sw));
   const swMax = Math.max(...global.map((s) => s.sw));
-  const rotationEpaules = swMax > 0 ? Math.min(...prep.map((s) => s.sw)) / swMax : NaN;
+  const rotationEpaules = swMax > 0 ? swMin / swMax : NaN;
 
   // Flexion de genou la plus marquée pendant l'armé
   const flexionGenou = Math.min(
@@ -211,10 +215,13 @@ export function mesurerFrappe(series, pic, main) {
     ? (Math.max(...avant.map((s) => s.hanches.y)) - Math.min(...avant.map((s) => s.hanches.y))) / sw
     : NaN;
 
-  // Type de coup
+  // Type de coup : la déclaration du joueur prime sur la reconnaissance automatique,
+  // qui reste fragile en 2D (elle dépend fortement de l'angle de prise de vue).
   const auDessusTete = poignet.y < contact.nez.y;
   let type;
-  if (auDessusTete && hauteurImpact > 1.6) {
+  if (coupImpose && coupImpose !== 'auto') {
+    type = coupImpose;
+  } else if (auDessusTete && hauteurImpact > 1.6) {
     type = 'service';
   } else {
     const coteBras = Math.sign(contact[cleEpaule].x - contact.hanches.x);
@@ -475,8 +482,26 @@ function reglesGroupe(type, frappes) {
 }
 
 /** Règles globales, indépendantes du type de coup. */
-function reglesGlobales(frappes, duree, tauxDetection) {
+function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte = false) {
   const c = [];
+  if (mainSuspecte) {
+    c.push({
+      niveau: 'priorite', coup: 'Réglage',
+      titre: 'La main déclarée est probablement la mauvaise',
+      detail: `Aucune frappe n'a été trouvée du côté ${profil.main === 'right' ? 'droit' : 'gauche'}, ` +
+        `alors que l'autre bras, lui, frappe nettement. Il s'agit presque toujours d'une inversion ` +
+        `dans le formulaire — ou d'une vidéo vue en miroir (certaines caméras frontales retournent l'image).`,
+      exo: `Change « Tu joues de quelle main ? » en « ${profil.main === 'right' ? 'Gaucher' : 'Droitier'} » et relance l'analyse.`,
+    });
+  }
+  if (profil.main === 'auto') {
+    c.push({
+      niveau: 'corriger', coup: 'Réglage',
+      titre: 'Main dominante devinée, pas déclarée',
+      detail: "La main qui tient la raquette a été détectée automatiquement, ce qui est peu fiable — surtout sur un revers à deux mains, où les deux bras bougent autant. Si elle est fausse, l'app mesure le mauvais bras et confond coup droit et revers.",
+      exo: "Renseigne « Droitier » ou « Gaucher » dans le formulaire avant de relancer l'analyse.",
+    });
+  }
   if (tauxDetection < 0.7) {
     c.push({
       niveau: 'corriger', coup: 'Qualité vidéo',
@@ -500,15 +525,26 @@ function reglesGlobales(frappes, duree, tauxDetection) {
 /* 5. Point d'entrée                                                   */
 /* ------------------------------------------------------------------ */
 
-export function analyser({ frames, largeur, hauteur, tauxDetection }, { main = 'auto' } = {}) {
+export function analyser({ frames, largeur, hauteur, tauxDetection }, profil = {}) {
+  const { main = 'auto', coup = 'auto' } = profil;
+
   const series = construireSeries(frames, largeur, hauteur);
   const mainDominante = detecterMain(series, main);
   const vitesse = vitessePoignet(series, mainDominante);
   const pics = detecterFrappes(series, vitesse);
 
   const frappes = pics
-    .map((pic) => mesurerFrappe(series, pic, mainDominante))
+    .map((pic) => mesurerFrappe(series, pic, mainDominante, coup))
     .filter(Boolean);
+
+  // Filet de sécurité : si la main déclarée ne donne rien alors que l'autre bras frappe
+  // visiblement, c'est presque toujours une erreur de saisie — on le dit plutôt que
+  // d'afficher un résultat vide et inexplicable.
+  let mainSuspecte = false;
+  if (!frappes.length && (main === 'right' || main === 'left')) {
+    const autre = mainDominante === 'D' ? 'G' : 'D';
+    mainSuspecte = detecterFrappes(series, vitessePoignet(series, autre)).length > 0;
+  }
 
   const duree = series.length ? series.at(-1).t - series[0].t : 0;
 
@@ -524,7 +560,7 @@ export function analyser({ frames, largeur, hauteur, tauxDetection }, { main = '
     if (liste.length === 0) continue;
     constats = constats.concat(reglesGroupe(type, liste));
   }
-  constats = constats.concat(reglesGlobales(frappes, duree, tauxDetection));
+  constats = constats.concat(reglesGlobales(frappes, duree, tauxDetection, profil, mainSuspecte));
 
   // Score : on part de 100 et on retire selon la gravité des constats
   const penalites = { priorite: 15, corriger: 8, bon: 0, info: 0 };
@@ -546,6 +582,7 @@ export function analyser({ frames, largeur, hauteur, tauxDetection }, { main = '
     constats,
     score,
     mainDominante,
+    profil,
     duree,
     tauxDetection,
     groupes: [...groupes.entries()].map(([type, liste]) => ({

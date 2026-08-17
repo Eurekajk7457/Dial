@@ -172,8 +172,37 @@ details.fond summary { cursor: pointer; font-weight: 600; }
 details.fond ul { margin: .6rem 0; padding-left: 1.2rem; }
 details.fond li { margin-bottom: .3rem; font-size: .9rem; }
 
+/* Formulaire de profil */
+.titre-bloc { margin: 1.2rem 0 .3rem; font-size: 1rem; }
+label.requis { color: var(--txt); font-weight: 600; }
+label.requis span { color: var(--acc); }
+label.pleine-largeur { margin-bottom: 1rem; }
+details.reglages {
+  margin-bottom: 1rem; border: 1px solid var(--line);
+  border-radius: 10px; padding: .6rem .8rem; background: var(--bg3);
+}
+details.reglages summary { cursor: pointer; color: var(--txt2); font-size: .88rem; }
+details.reglages .options { margin-bottom: 0; }
+
 /* IA */
 .ia-config { display: grid; gap: .75rem; margin-bottom: 1.2rem; }
+
+/* Discussion de suivi */
+.ia-discussion { margin-top: 1.6rem; border-top: 1px solid var(--line); padding-top: 1.2rem; }
+.ia-discussion h3 { font-size: 1rem; }
+.echange { margin-bottom: 1rem; }
+.echange .qui {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--txt2); margin-bottom: .25rem;
+}
+.echange.moi .texte {
+  background: var(--bg3); border-left: 3px solid var(--acc);
+  border-radius: 8px; padding: .6rem .8rem;
+}
+.echange.coach .texte p:first-child { margin-top: 0; }
+.ia-saisie { display: flex; gap: .5rem; align-items: stretch; }
+.ia-saisie input { margin-top: 0; }
+.ia-saisie button { white-space: nowrap; }
 .ia-resultat { font-size: .95rem; }
 .ia-resultat h3 { margin-top: 1.2rem; }
 .ia-resultat ul { padding-left: 1.2rem; }
@@ -227,28 +256,87 @@ footer { max-width: 1000px; margin: 0 auto; padding: 0 1.25rem 2.5rem; color: va
         <canvas id="overlay" class="overlay"></canvas>
       </div>
 
+      <h3 class="titre-bloc">Parle-moi de cette vidéo</h3>
+      <p class="note">
+        Plus tu m'en dis, plus l'analyse est juste. Les deux premières questions comptent
+        vraiment : sans elles je dois deviner, et je me trompe.
+      </p>
+
       <div class="options">
-        <label>Main dominante
-          <select id="opt-main">
-            <option value="auto" selected>Détection auto</option>
+        <label class="requis">Tu joues de quelle main ? <span aria-hidden="true">*</span>
+          <select id="opt-main" required>
+            <option value="" selected disabled>— à renseigner —</option>
             <option value="right">Droitier</option>
             <option value="left">Gaucher</option>
+            <option value="auto">Je ne sais pas, devine</option>
           </select>
         </label>
-        <label>Début (s)
-          <input type="number" id="opt-debut" value="0" min="0" step="0.5">
+        <label class="requis">Quel coup as-tu filmé ? <span aria-hidden="true">*</span>
+          <select id="opt-coup" required>
+            <option value="" selected disabled>— à renseigner —</option>
+            <option value="coup-droit">Coup droit</option>
+            <option value="revers">Revers</option>
+            <option value="service">Service</option>
+            <option value="volee-coup-droit">Volée de coup droit</option>
+            <option value="volee-revers">Volée de revers</option>
+            <option value="auto">Un peu de tout, devine</option>
+          </select>
         </label>
-        <label>Durée analysée (s)
-          <input type="number" id="opt-duree" value="30" min="3" max="120" step="1">
+        <label>Ton revers
+          <select id="opt-revers">
+            <option value="deux" selected>À deux mains</option>
+            <option value="une">À une main</option>
+          </select>
         </label>
-        <label>Images / seconde
-          <select id="opt-fps">
-            <option value="8">8 (rapide)</option>
-            <option value="12" selected>12 (équilibré)</option>
-            <option value="20">20 (précis, plus lent)</option>
+        <label>La caméra était
+          <select id="opt-angle">
+            <option value="cote" selected>Sur le côté</option>
+            <option value="face">Devant toi</option>
+            <option value="dos">Derrière toi</option>
+            <option value="autre">En diagonale / autre</option>
+          </select>
+        </label>
+        <label>Ton niveau
+          <select id="opt-niveau">
+            <option value="debutant">Débutant</option>
+            <option value="intermediaire" selected>Intermédiaire (club)</option>
+            <option value="avance">Avancé / compétition</option>
+          </select>
+        </label>
+        <label>Depuis quand joues-tu ?
+          <select id="opt-anciennete">
+            <option value="" selected>Non précisé</option>
+            <option value="moins1">Moins d'un an</option>
+            <option value="1a3">1 à 3 ans</option>
+            <option value="3a10">3 à 10 ans</option>
+            <option value="plus10">Plus de 10 ans</option>
           </select>
         </label>
       </div>
+
+      <label class="pleine-largeur">Qu'est-ce que tu voudrais améliorer, ou qu'est-ce qui te gêne ?
+        <input type="text" id="opt-objectif"
+               placeholder="ex : mon revers part souvent dans le filet, je me sens en retard sur la balle">
+      </label>
+
+      <details class="reglages">
+        <summary>Réglages avancés (facultatif)</summary>
+        <div class="options">
+          <label>Début (s)
+            <input type="number" id="opt-debut" value="0" min="0" step="0.5">
+          </label>
+          <label>Durée analysée (s)
+            <input type="number" id="opt-duree" value="30" min="3" max="120" step="1">
+          </label>
+          <label>Images / seconde
+            <select id="opt-fps">
+              <option value="8">8 (rapide)</option>
+              <option value="12" selected>12 (équilibré)</option>
+              <option value="20">20 (précis, plus lent)</option>
+            </select>
+          </label>
+        </div>
+      </details>
 
       <div class="actions">
         <button id="btn-analyser" class="primary" type="button">Analyser la technique</button>
@@ -294,21 +382,30 @@ footer { max-width: 1000px; margin: 0 auto; padding: 0 1.25rem 2.5rem; color: va
         <label class="ligne">
           <input type="checkbox" id="ia-web" checked> Chercher des références en ligne (recherche web)
         </label>
-        <label>Ton niveau
-          <select id="ia-niveau">
-            <option value="debutant">Débutant</option>
-            <option value="intermediaire" selected>Intermédiaire (club)</option>
-            <option value="avance">Avancé / compétition</option>
-          </select>
-        </label>
-        <label>Objectif / question (facultatif)
-          <input type="text" id="ia-objectif" placeholder="ex : gagner en puissance en coup droit sans perdre le contrôle">
-        </label>
+        <p class="note">
+          Ton profil et ton objectif renseignés à l'étape 1 sont transmis avec les images.
+        </p>
         <button id="btn-ia" class="primary" type="button">Lancer l'analyse IA</button>
         <p id="ia-statut" class="note" hidden></p>
         <p id="ia-erreur" class="erreur" hidden></p>
       </div>
+
       <article id="ia-resultat" class="ia-resultat"></article>
+
+      <div id="ia-discussion" class="ia-discussion" hidden>
+        <h3>Poser une question</h3>
+        <p class="note">
+          L'entraîneur se souvient de ta vidéo et de tout ce qui précède. Demande-lui de préciser
+          un point, de détailler un exercice, ou dis-lui ce que tu ressens sur le court.
+        </p>
+        <div id="ia-echanges"></div>
+        <div class="ia-saisie">
+          <input type="text" id="ia-question"
+                 placeholder="ex : pourquoi ma balle part-elle dans le filet sur ce geste ?">
+          <button id="btn-ia-question" class="primary" type="button">Envoyer</button>
+        </div>
+        <p id="ia-question-erreur" class="erreur" hidden></p>
+      </div>
     </div>
 
     <div class="vue" id="vue-fondamentaux" hidden></div>
@@ -804,7 +901,7 @@ function detecterFrappes(
 const fenetre = (series, t0, t1) =>
   series.filter((s) => s.ok && s.t >= t0 && s.t <= t1);
 
-function mesurerFrappe(series, pic, main) {
+function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
   const contact = series[pic.i];
   if (!contact?.ok) return null;
 
@@ -826,9 +923,13 @@ function mesurerFrappe(series, pic, main) {
   const ecartTronc = contact.hanches.y - contact.epaules.y;
   const hauteurImpact = ecartTronc > 0 ? (contact.hanches.y - poignet.y) / ecartTronc : NaN;
 
-  // Rotation des épaules : la ligne d'épaules « rétrécit » quand le buste se met de profil
+  // Rotation des épaules : la ligne d'épaules se raccourcit quand le buste se met de profil.
+  // On compare le minimum et le maximum sur toute la frappe plutôt que « armé contre face » :
+  // selon que la caméra est devant ou sur le côté, c'est l'armé ou l'impact qui paraît le plus
+  // large, et seule l'amplitude du changement traduit réellement la rotation.
+  const swMin = Math.min(...global.map((s) => s.sw));
   const swMax = Math.max(...global.map((s) => s.sw));
-  const rotationEpaules = swMax > 0 ? Math.min(...prep.map((s) => s.sw)) / swMax : NaN;
+  const rotationEpaules = swMax > 0 ? swMin / swMax : NaN;
 
   // Flexion de genou la plus marquée pendant l'armé
   const flexionGenou = Math.min(
@@ -871,10 +972,13 @@ function mesurerFrappe(series, pic, main) {
     ? (Math.max(...avant.map((s) => s.hanches.y)) - Math.min(...avant.map((s) => s.hanches.y))) / sw
     : NaN;
 
-  // Type de coup
+  // Type de coup : la déclaration du joueur prime sur la reconnaissance automatique,
+  // qui reste fragile en 2D (elle dépend fortement de l'angle de prise de vue).
   const auDessusTete = poignet.y < contact.nez.y;
   let type;
-  if (auDessusTete && hauteurImpact > 1.6) {
+  if (coupImpose && coupImpose !== 'auto') {
+    type = coupImpose;
+  } else if (auDessusTete && hauteurImpact > 1.6) {
     type = 'service';
   } else {
     const coteBras = Math.sign(contact[cleEpaule].x - contact.hanches.x);
@@ -1135,8 +1239,26 @@ function reglesGroupe(type, frappes) {
 }
 
 /** Règles globales, indépendantes du type de coup. */
-function reglesGlobales(frappes, duree, tauxDetection) {
+function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte = false) {
   const c = [];
+  if (mainSuspecte) {
+    c.push({
+      niveau: 'priorite', coup: 'Réglage',
+      titre: 'La main déclarée est probablement la mauvaise',
+      detail: `Aucune frappe n'a été trouvée du côté ${profil.main === 'right' ? 'droit' : 'gauche'}, ` +
+        `alors que l'autre bras, lui, frappe nettement. Il s'agit presque toujours d'une inversion ` +
+        `dans le formulaire — ou d'une vidéo vue en miroir (certaines caméras frontales retournent l'image).`,
+      exo: `Change « Tu joues de quelle main ? » en « ${profil.main === 'right' ? 'Gaucher' : 'Droitier'} » et relance l'analyse.`,
+    });
+  }
+  if (profil.main === 'auto') {
+    c.push({
+      niveau: 'corriger', coup: 'Réglage',
+      titre: 'Main dominante devinée, pas déclarée',
+      detail: "La main qui tient la raquette a été détectée automatiquement, ce qui est peu fiable — surtout sur un revers à deux mains, où les deux bras bougent autant. Si elle est fausse, l'app mesure le mauvais bras et confond coup droit et revers.",
+      exo: "Renseigne « Droitier » ou « Gaucher » dans le formulaire avant de relancer l'analyse.",
+    });
+  }
   if (tauxDetection < 0.7) {
     c.push({
       niveau: 'corriger', coup: 'Qualité vidéo',
@@ -1160,15 +1282,26 @@ function reglesGlobales(frappes, duree, tauxDetection) {
 /* 5. Point d'entrée                                                   */
 /* ------------------------------------------------------------------ */
 
-function analyser({ frames, largeur, hauteur, tauxDetection }, { main = 'auto' } = {}) {
+function analyser({ frames, largeur, hauteur, tauxDetection }, profil = {}) {
+  const { main = 'auto', coup = 'auto' } = profil;
+
   const series = construireSeries(frames, largeur, hauteur);
   const mainDominante = detecterMain(series, main);
   const vitesse = vitessePoignet(series, mainDominante);
   const pics = detecterFrappes(series, vitesse);
 
   const frappes = pics
-    .map((pic) => mesurerFrappe(series, pic, mainDominante))
+    .map((pic) => mesurerFrappe(series, pic, mainDominante, coup))
     .filter(Boolean);
+
+  // Filet de sécurité : si la main déclarée ne donne rien alors que l'autre bras frappe
+  // visiblement, c'est presque toujours une erreur de saisie — on le dit plutôt que
+  // d'afficher un résultat vide et inexplicable.
+  let mainSuspecte = false;
+  if (!frappes.length && (main === 'right' || main === 'left')) {
+    const autre = mainDominante === 'D' ? 'G' : 'D';
+    mainSuspecte = detecterFrappes(series, vitessePoignet(series, autre)).length > 0;
+  }
 
   const duree = series.length ? series.at(-1).t - series[0].t : 0;
 
@@ -1184,7 +1317,7 @@ function analyser({ frames, largeur, hauteur, tauxDetection }, { main = 'auto' }
     if (liste.length === 0) continue;
     constats = constats.concat(reglesGroupe(type, liste));
   }
-  constats = constats.concat(reglesGlobales(frappes, duree, tauxDetection));
+  constats = constats.concat(reglesGlobales(frappes, duree, tauxDetection, profil, mainSuspecte));
 
   // Score : on part de 100 et on retire selon la gravité des constats
   const penalites = { priorite: 15, corriger: 8, bon: 0, info: 0 };
@@ -1206,6 +1339,7 @@ function analyser({ frames, largeur, hauteur, tauxDetection }, { main = 'auto' }
     constats,
     score,
     mainDominante,
+    profil,
     duree,
     tauxDetection,
     groupes: [...groupes.entries()].map(([type, liste]) => ({
@@ -1264,12 +1398,33 @@ function nettoyerBase64(dataURL) {
   return i >= 0 ? dataURL.slice(i + 1) : dataURL;
 }
 
-function construirePrompt({ analyse, niveau, objectif, avecWeb, nbImages }) {
-  const niveaux = {
+const LIBELLES = {
+  niveau: {
     debutant: 'débutant (moins de 2 ans de pratique)',
     intermediaire: 'intermédiaire, joueur de club',
     avance: 'avancé, joueur de compétition',
-  };
+  },
+  anciennete: {
+    moins1: "moins d'un an de pratique",
+    '1a3': '1 à 3 ans de pratique',
+    '3a10': '3 à 10 ans de pratique',
+    plus10: 'plus de 10 ans de pratique',
+  },
+  angle: {
+    cote: 'sur le côté du joueur',
+    face: 'devant le joueur',
+    dos: 'derrière le joueur',
+    autre: 'en diagonale',
+  },
+  coup: {
+    'coup-droit': 'coup droit', revers: 'revers', service: 'service',
+    'volee-coup-droit': 'volée de coup droit', 'volee-revers': 'volée de revers',
+    auto: 'non précisé (coups variés)',
+  },
+};
+
+function construirePrompt({ analyse, avecWeb, nbImages }) {
+  const p = analyse.profil || {};
 
   const groupes = analyse.groupes.map((g) => {
     const m = g.medianes;
@@ -1291,9 +1446,23 @@ function construirePrompt({ analyse, niveau, objectif, avecWeb, nbImages }) {
     .map((c) => `- [${c.coup}] ${c.titre} — ${c.detail}`)
     .join('\n') || '- (aucun défaut majeur détecté automatiquement)';
 
+  const declaree = p.main === 'right' || p.main === 'left';
+
   return [
-    `Joueur ${niveaux[niveau] || niveaux.intermediaire}, ${analyse.mainDominante === 'D' ? 'droitier' : 'gaucher'} (détecté).`,
-    objectif ? `Objectif annoncé par le joueur : ${objectif}` : null,
+    `Profil renseigné par le joueur :`,
+    `- Main : ${declaree
+      ? (p.main === 'right' ? 'droitier (déclaré)' : 'gaucher (déclaré)')
+      : `${analyse.mainDominante === 'D' ? 'droitier' : 'gaucher'} — DEVINÉ automatiquement, donc peu fiable`}`,
+    `- Coup filmé : ${LIBELLES.coup[p.coup] || 'non précisé'}`,
+    `- Revers : ${p.revers === 'une' ? 'à une main' : 'à deux mains'}`,
+    `- Niveau : ${LIBELLES.niveau[p.niveau] || LIBELLES.niveau.intermediaire}`,
+    p.anciennete ? `- Expérience : ${LIBELLES.anciennete[p.anciennete]}` : null,
+    `- Caméra placée ${LIBELLES.angle[p.angle] || 'position non précisée'}`,
+    p.objectif ? `- Ce que le joueur veut améliorer, dans ses mots : « ${p.objectif} »` : null,
+    ``,
+    !declaree
+      ? `Attention : la main dominante n'a pas été déclarée. Si les images montrent clairement l'inverse de ce qui est indiqué, signale-le : toutes les mesures d'angle de bras portent alors sur le mauvais bras.`
+      : null,
     ``,
     `Séquence analysée : ${analyse.duree.toFixed(1)} s, ${analyse.frappes.length} frappe(s) détectée(s).`,
     `Qualité de détection de posture : ${Math.round(analyse.tauxDetection * 100)} % des images.`,
@@ -1344,8 +1513,7 @@ async function appeler({ apiKey, corps }) {
  * @returns {Promise<{texte: string, sources: Array, usage: object}>}
  */
 async function analyserAvecClaude({
-  apiKey, analyse, images, niveau = 'intermediaire', objectif = '',
-  avecWeb = true, onStatut = () => {},
+  apiKey, analyse, images, avecWeb = true, onStatut = () => {},
 }) {
   if (!apiKey) throw new Error('Clé API manquante.');
 
@@ -1359,7 +1527,7 @@ async function analyserAvecClaude({
   });
   contenu.push({
     type: 'text',
-    text: construirePrompt({ analyse, niveau, objectif, avecWeb, nbImages: images.length }),
+    text: construirePrompt({ analyse, avecWeb, nbImages: images.length }),
   });
 
   const messages = [{ role: 'user', content: contenu }];
@@ -1375,14 +1543,53 @@ async function analyserAvecClaude({
   }
 
   onStatut('Envoi des images clés à Claude…');
+  return echanger({ apiKey, base, messages, onStatut });
+}
 
+/**
+ * Question de suivi : on renvoie tout l'échange précédent, donc l'entraîneur garde en mémoire
+ * les images de la vidéo et ses propres conseils.
+ * @param {{apiKey: string, conversation: Array, question: string, avecWeb: boolean, onStatut: Function}} opts
+ */
+async function poserQuestion({
+  apiKey, conversation, question, avecWeb = true, onStatut = () => {},
+}) {
+  if (!apiKey) throw new Error('Clé API manquante.');
+  if (!question?.trim()) throw new Error('Question vide.');
+  if (!conversation?.length) throw new Error("Lance d'abord l'analyse IA.");
+
+  const base = {
+    model: MODELE_IA,
+    max_tokens: 4000,
+    system: SYSTEME + `
+
+Le joueur pose maintenant une question de suivi. Réponds directement à cette question,
+sans reprendre le plan en sections de l'analyse initiale et sans répéter ce que tu as déjà dit.
+Reste concret et bref. Si la réponse dépend de quelque chose que les images ne montrent pas,
+dis-le et demande au joueur la précision qui te manque.`,
+    thinking: { type: 'adaptive' },
+    output_config: { effort: 'high' },
+  };
+  if (avecWeb) {
+    base.tools = [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }];
+  }
+
+  const messages = [...conversation, { role: 'user', content: question.trim() }];
+  onStatut('Question envoyée…');
+  return echanger({ apiKey, base, messages, onStatut });
+}
+
+/** Boucle d'échange commune : relance tant qu'un outil serveur met la réponse en pause. */
+async function echanger({ apiKey, base, messages, onStatut }) {
+  const fil = [...messages];
   let reponse = null;
+
   for (let tour = 0; tour < 6; tour++) {
-    reponse = await appeler({ apiKey, corps: { ...base, messages } });
+    reponse = await appeler({ apiKey, corps: { ...base, messages: fil } });
 
     if (reponse.stop_reason === 'pause_turn') {
       // Un outil serveur (recherche web) a atteint sa limite d'itérations : on relance.
-      messages.push({ role: 'assistant', content: reponse.content });
+      fil.push({ role: 'assistant', content: reponse.content });
       onStatut('Recherche de références en ligne…');
       continue;
     }
@@ -1390,7 +1597,7 @@ async function analyserAvecClaude({
   }
 
   if (reponse?.stop_reason === 'refusal') {
-    throw new Error("Claude a décliné cette requête. Réessaie avec une autre séquence ou sans recherche web.");
+    throw new Error("Claude a décliné cette requête. Reformule, ou décoche la recherche web.");
   }
 
   const texte = (reponse?.content || [])
@@ -1411,7 +1618,10 @@ async function analyserAvecClaude({
   }
 
   if (!texte) throw new Error("Réponse vide de l'API.");
-  return { texte, sources, usage: reponse.usage };
+
+  // La conversation renvoyée sert de mémoire pour les questions suivantes.
+  fil.push({ role: 'assistant', content: reponse.content });
+  return { texte, sources, usage: reponse.usage, conversation: fil };
 }
 
 /* ===== js/app.js ===== */
@@ -1437,7 +1647,21 @@ const etat = {
   fichier: null,
   echantillon: null,
   analyse: null,
+  conversation: null,   // mémoire de l'échange avec l'entraîneur IA
 };
+
+/** Ce que le joueur a renseigné sur lui et sur la vidéo. */
+function lireProfil() {
+  return {
+    main: $('#opt-main').value,
+    coup: $('#opt-coup').value,
+    revers: $('#opt-revers').value,
+    angle: $('#opt-angle').value,
+    niveau: $('#opt-niveau').value,
+    anciennete: $('#opt-anciennete').value,
+    objectif: $('#opt-objectif').value.trim(),
+  };
+}
 
 /* ------------------------------------------------------------------ */
 /* Import de la vidéo                                                  */
@@ -1576,6 +1800,17 @@ function progres(p, label) {
 
 btnAnalyser.addEventListener('click', async () => {
   erreurImport('');
+
+  const profil = lireProfil();
+  if (!profil.main || !profil.coup) {
+    const manquant = !profil.main ? '#opt-main' : '#opt-coup';
+    erreurImport("Réponds d'abord aux deux questions marquées d'une étoile : sans elles, l'analyse " +
+      'se trompe de bras et confond coup droit et revers.');
+    $(manquant).focus();
+    $(manquant).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
   btnAnalyser.disabled = true;
   video.pause();
 
@@ -1590,7 +1825,8 @@ btnAnalyser.addEventListener('click', async () => {
     etat.echantillon = echantillon;
 
     progres(0.97, 'Calcul des mesures…');
-    etat.analyse = analyser(echantillon, { main: $('#opt-main').value });
+    etat.analyse = analyser(echantillon, profil);
+    etat.conversation = null;   // nouvelle vidéo : on repart d'une discussion vierge
 
     progres(1, 'Terminé.');
     setTimeout(() => { $('#progress').hidden = true; }, 800);
@@ -1911,25 +2147,21 @@ $('#btn-ia').addEventListener('click', async () => {
   statut.textContent = 'Préparation des images clés…';
 
   try {
-    const { texte, sources } = await analyserAvecClaude({
+    const { texte, sources, conversation } = await analyserAvecClaude({
       apiKey: cle,
       analyse: etat.analyse,
       images: imagesClefs(etat.analyse),
-      niveau: $('#ia-niveau').value,
-      objectif: $('#ia-objectif').value.trim(),
       avecWeb: $('#ia-web').checked,
       onStatut: (m) => { statut.textContent = m; },
     });
 
+    etat.conversation = conversation;
     sortie.innerHTML = markdown(texte);
-    if (sources.length) {
-      const bloc = el('div', 'sources');
-      bloc.innerHTML = '<strong>Sources consultées :</strong><ul>' +
-        sources.map((s) => `<li><a href="${echapper(s.url)}" target="_blank" rel="noopener">${echapper(s.titre)}</a></li>`).join('') +
-        '</ul>';
-      sortie.appendChild(bloc);
-    }
-    statut.textContent = 'Analyse terminée.';
+    if (sources.length) sortie.appendChild(blocSources(sources));
+
+    $('#ia-discussion').hidden = false;
+    $('#ia-echanges').innerHTML = '';
+    statut.textContent = 'Analyse terminée. Tu peux maintenant poser des questions ci-dessous.';
   } catch (e) {
     const msg = e.message || String(e);
     err.textContent = /Failed to fetch|NetworkError/i.test(msg)
@@ -1940,6 +2172,78 @@ $('#btn-ia').addEventListener('click', async () => {
   } finally {
     btn.disabled = false;
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* Discussion de suivi avec l'entraîneur IA                            */
+/* ------------------------------------------------------------------ */
+
+function blocSources(sources) {
+  const bloc = el('div', 'sources');
+  bloc.innerHTML = '<strong>Sources consultées :</strong><ul>' +
+    sources.map((s) => `<li><a href="${echapper(s.url)}" target="_blank" rel="noopener">${echapper(s.titre)}</a></li>`).join('') +
+    '</ul>';
+  return bloc;
+}
+
+function ajouterEchange(role, contenuHTML) {
+  const bloc = el('div', `echange ${role}`);
+  bloc.appendChild(el('div', 'qui', role === 'moi' ? 'Toi' : 'Entraîneur'));
+  const corps = el('div', 'texte');
+  corps.innerHTML = contenuHTML;
+  bloc.appendChild(corps);
+  $('#ia-echanges').appendChild(bloc);
+  bloc.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  return bloc;
+}
+
+async function envoyerQuestion() {
+  const champ = $('#ia-question');
+  const btn = $('#btn-ia-question');
+  const err = $('#ia-question-erreur');
+  const question = champ.value.trim();
+  err.hidden = true;
+
+  if (!question) return;
+  if (!etat.conversation) {
+    err.textContent = "Lance d'abord l'analyse IA au-dessus.";
+    err.hidden = false;
+    return;
+  }
+
+  champ.value = '';
+  btn.disabled = true;
+  champ.disabled = true;
+  ajouterEchange('moi', echapper(question));
+  const attente = ajouterEchange('coach', '<em>réflexion en cours…</em>');
+
+  try {
+    const { texte, sources, conversation } = await poserQuestion({
+      apiKey: champParCle(),
+      conversation: etat.conversation,
+      question,
+      avecWeb: $('#ia-web').checked,
+    });
+    etat.conversation = conversation;
+    attente.querySelector('.texte').innerHTML = markdown(texte);
+    if (sources.length) attente.appendChild(blocSources(sources));
+  } catch (e) {
+    attente.remove();
+    err.textContent = e.message || String(e);
+    err.hidden = false;
+    champ.value = question;   // on rend la question pour qu'elle ne soit pas perdue
+  } finally {
+    btn.disabled = false;
+    champ.disabled = false;
+    champ.focus();
+  }
+}
+
+const champParCle = () => champCle.value.trim();
+
+$('#btn-ia-question').addEventListener('click', envoyerQuestion);
+$('#ia-question').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); envoyerQuestion(); }
 });
 
 /* ------------------------------------------------------------------ */
