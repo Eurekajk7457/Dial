@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dial Tennis — Analyse vidéo de ton jeu</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23d8f24a'/%3E%3Cpath d='M4 8a14 14 0 0 1 0 16M28 8a14 14 0 0 0 0 16' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="ball" aria-hidden="true"></span>
+    <div>
+      <h1>Dial Tennis</h1>
+      <p>Envoie une vidéo, reçois une analyse technique et des conseils</p>
+    </div>
+  </div>
+  <button id="btn-aide" class="ghost" type="button">Comment filmer ?</button>
+</header>
+
+<main>
+
+  <!-- ÉTAPE 1 : IMPORT -->
+  <section class="card" id="etape-import">
+    <h2>1. Ta vidéo</h2>
+
+    <div id="dropzone" class="dropzone" tabindex="0" role="button"
+         aria-label="Déposer une vidéo ou cliquer pour choisir un fichier">
+      <strong>Dépose ta vidéo ici</strong>
+      <span>ou clique pour choisir un fichier (mp4, mov, webm — reste sur ton appareil)</span>
+      <input type="file" id="file-input" accept="video/*" hidden>
+    </div>
+
+    <div id="video-zone" class="video-zone" hidden>
+      <div class="video-wrap">
+        <video id="video" playsinline controls muted preload="metadata"></video>
+        <canvas id="overlay" class="overlay"></canvas>
+      </div>
+
+      <div class="options">
+        <label>Main dominante
+          <select id="opt-main">
+            <option value="auto" selected>Détection auto</option>
+            <option value="right">Droitier</option>
+            <option value="left">Gaucher</option>
+          </select>
+        </label>
+        <label>Début (s)
+          <input type="number" id="opt-debut" value="0" min="0" step="0.5">
+        </label>
+        <label>Durée analysée (s)
+          <input type="number" id="opt-duree" value="30" min="3" max="120" step="1">
+        </label>
+        <label>Images / seconde
+          <select id="opt-fps">
+            <option value="8">8 (rapide)</option>
+            <option value="12" selected>12 (équilibré)</option>
+            <option value="20">20 (précis, plus lent)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button id="btn-analyser" class="primary" type="button">Analyser la technique</button>
+        <button id="btn-reset" class="ghost" type="button">Changer de vidéo</button>
+      </div>
+
+      <div id="progress" class="progress" hidden>
+        <div class="bar"><div id="progress-fill"></div></div>
+        <p id="progress-label">Préparation…</p>
+      </div>
+      <p id="import-erreur" class="erreur" hidden></p>
+    </div>
+  </section>
+
+  <!-- ÉTAPE 2 : RÉSULTATS -->
+  <section class="card" id="etape-resultats" hidden>
+    <h2>2. Résultats</h2>
+
+    <nav class="onglets" role="tablist">
+      <button class="onglet actif" data-vue="synthese" role="tab">Synthèse</button>
+      <button class="onglet" data-vue="coups" role="tab">Coups détectés</button>
+      <button class="onglet" data-vue="mesures" role="tab">Mesures</button>
+      <button class="onglet" data-vue="ia" role="tab">Conseils IA</button>
+      <button class="onglet" data-vue="fondamentaux" role="tab">Fondamentaux</button>
+    </nav>
+
+    <div class="vue" id="vue-synthese"></div>
+    <div class="vue" id="vue-coups" hidden></div>
+    <div class="vue" id="vue-mesures" hidden></div>
+
+    <div class="vue" id="vue-ia" hidden>
+      <div class="ia-config">
+        <p class="note">
+          Analyse approfondie facultative : les images clés et les mesures sont envoyées à l'API Claude
+          (Anthropic) avec <em>ta</em> clé. Sans clé, tout le reste de l'app fonctionne hors ligne.
+        </p>
+        <label>Clé API Anthropic
+          <input type="password" id="ia-cle" placeholder="sk-ant-..." autocomplete="off">
+        </label>
+        <label class="ligne">
+          <input type="checkbox" id="ia-memoriser"> Mémoriser dans ce navigateur (localStorage)
+        </label>
+        <label class="ligne">
+          <input type="checkbox" id="ia-web" checked> Chercher des références en ligne (recherche web)
+        </label>
+        <label>Ton niveau
+          <select id="ia-niveau">
+            <option value="debutant">Débutant</option>
+            <option value="intermediaire" selected>Intermédiaire (club)</option>
+            <option value="avance">Avancé / compétition</option>
+          </select>
+        </label>
+        <label>Objectif / question (facultatif)
+          <input type="text" id="ia-objectif" placeholder="ex : gagner en puissance en coup droit sans perdre le contrôle">
+        </label>
+        <button id="btn-ia" class="primary" type="button">Lancer l'analyse IA</button>
+        <p id="ia-statut" class="note" hidden></p>
+        <p id="ia-erreur" class="erreur" hidden></p>
+      </div>
+      <article id="ia-resultat" class="ia-resultat"></article>
+    </div>
+
+    <div class="vue" id="vue-fondamentaux" hidden></div>
+  </section>
+
+  <!-- FONDAMENTAUX seuls (avant analyse) -->
+  <section class="card" id="etape-biblio">
+    <h2>Les fondamentaux, en attendant</h2>
+    <div id="biblio"></div>
+  </section>
+
+</main>
+
+<dialog id="dlg-aide">
+  <h3>Comment filmer pour une bonne analyse</h3>
+  <ul>
+    <li><strong>Angle</strong> : de côté (perpendiculaire à la ligne de fond) pour le coup droit / revers, de face ou 3/4 arrière pour le service.</li>
+    <li><strong>Cadrage</strong> : joueur entier, des pieds à la raquette levée. Un peu d'air au-dessus de la tête.</li>
+    <li><strong>Distance</strong> : 5 à 10 m, caméra à hauteur de hanche, posée ou sur trépied (évite le zoom et le panoramique).</li>
+    <li><strong>Durée</strong> : 15 à 30 s suffisent — 4 à 8 frappes du même coup valent mieux qu'un long échange.</li>
+    <li><strong>Lumière</strong> : de face ou latérale, pas à contre-jour. 60 fps si ton téléphone le permet.</li>
+    <li><strong>Un seul joueur visible</strong> si possible : la détection suit une seule personne.</li>
+  </ul>
+  <form method="dialog"><button class="primary">Compris</button></form>
+</dialog>
+
+<footer>
+  <p>
+    La vidéo n'est jamais téléversée : la détection de posture tourne dans ton navigateur.
+    Seule l'analyse IA facultative envoie quelques images clés à l'API Anthropic.
+  </p>
+</footer>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

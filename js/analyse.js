@@ -1,0 +1,567 @@
+/**
+ * Moteur d'analyse : transforme les points de posture en mesures biomécaniques,
+ * détecte les frappes, puis applique un référentiel de coaching.
+ */
+
+import { P, angle, dist, milieu, inclinaisonBuste, lisser } from './pose.js';
+import { SEUILS } from './knowledge.js';
+
+/* ------------------------------------------------------------------ */
+/* Utilitaires                                                         */
+/* ------------------------------------------------------------------ */
+
+const finis = (arr) => arr.filter(Number.isFinite);
+
+export function mediane(arr) {
+  const v = finis(arr).sort((a, b) => a - b);
+  if (!v.length) return NaN;
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+
+const borne = (v, min, max) => Math.min(max, Math.max(min, v));
+
+/** Compare une valeur à un seuil : 'bon' | 'moyen' | 'mauvais', + sens de l'écart. */
+function evaluer(valeur, seuil) {
+  if (!Number.isFinite(valeur)) return { niveau: 'inconnu', sens: 0 };
+  const [i0, i1] = seuil.ideal;
+  const [a0, a1] = seuil.acceptable;
+  if (valeur >= i0 && valeur <= i1) return { niveau: 'bon', sens: 0 };
+  const sens = valeur < i0 ? -1 : 1;
+  if (valeur >= a0 && valeur <= a1) return { niveau: 'moyen', sens };
+  return { niveau: 'mauvais', sens };
+}
+
+/* ------------------------------------------------------------------ */
+/* 1. Séries temporelles                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Construit les séries image par image. Les x sont remis à l'échelle par le rapport
+ * largeur/hauteur pour que les distances restent comparables dans les deux axes.
+ */
+export function construireSeries(frames, largeur, hauteur) {
+  const aspect = largeur && hauteur ? largeur / hauteur : 16 / 9;
+
+  return frames.map((f) => {
+    if (!f.pts) return { t: f.t, ok: false };
+    const p = (i) => ({ x: f.pts[i].x * aspect, y: f.pts[i].y, v: f.pts[i].visibility ?? 1 });
+
+    const epauleG = p(P.epauleG), epauleD = p(P.epauleD);
+    const hancheG = p(P.hancheG), hancheD = p(P.hancheD);
+    const epaules = milieu(epauleG, epauleD);
+    const hanches = milieu(hancheG, hancheD);
+    const sw = dist(epauleG, epauleD);
+
+    if (!(sw > 0.01)) return { t: f.t, ok: false };
+
+    return {
+      t: f.t,
+      ok: true,
+      sw,
+      nez: p(P.nez),
+      epauleG, epauleD, epaules,
+      hancheG, hancheD, hanches,
+      poignetG: p(P.poignetG), poignetD: p(P.poignetD),
+      coudeG: p(P.coudeG), coudeD: p(P.coudeD),
+      chevilleG: p(P.chevilleG), chevilleD: p(P.chevilleD),
+      angleCoudeG: angle(p(P.epauleG), p(P.coudeG), p(P.poignetG)),
+      angleCoudeD: angle(p(P.epauleD), p(P.coudeD), p(P.poignetD)),
+      angleGenouG: angle(hancheG, p(P.genouG), p(P.chevilleG)),
+      angleGenouD: angle(hancheD, p(P.genouD), p(P.chevilleD)),
+      buste: inclinaisonBuste(epaules, hanches),
+    };
+  });
+}
+
+/** Détermine la main dominante : celle dont le poignet parcourt le plus de chemin. */
+export function detecterMain(series, force = 'auto') {
+  if (force === 'right') return 'D';
+  if (force === 'left') return 'G';
+  let cheminG = 0, cheminD = 0;
+  for (let i = 1; i < series.length; i++) {
+    const a = series[i - 1], b = series[i];
+    if (!a.ok || !b.ok) continue;
+    cheminG += dist(a.poignetG, b.poignetG) / b.sw;
+    cheminD += dist(a.poignetD, b.poignetD) / b.sw;
+  }
+  return cheminD >= cheminG ? 'D' : 'G';
+}
+
+/** Vitesse du poignet dominant, en largeurs d'épaules par seconde. */
+export function vitessePoignet(series, main) {
+  const cle = main === 'D' ? 'poignetD' : 'poignetG';
+  const v = new Array(series.length).fill(NaN);
+  for (let i = 1; i < series.length; i++) {
+    const a = series[i - 1], b = series[i];
+    if (!a.ok || !b.ok) continue;
+    const dt = b.t - a.t;
+    if (dt <= 0) continue;
+    v[i] = dist(a[cle], b[cle]) / b.sw / dt;
+  }
+  return lisser(v, 3);
+}
+
+/* ------------------------------------------------------------------ */
+/* 2. Détection des frappes                                            */
+/* ------------------------------------------------------------------ */
+
+export function detecterFrappes(
+  series, vitesse,
+  { ecartMin = 0.55, fenetreDomination = 0.8, ratioDomination = 1.7 } = {},
+) {
+  const valides = finis(vitesse);
+  if (valides.length < 5) return [];
+  const max = Math.max(...valides);
+  const seuil = Math.max(max * 0.45, 2.2); // largeurs d'épaules / s
+
+  const pics = [];
+  for (let i = 1; i < vitesse.length - 1; i++) {
+    const v = vitesse[i];
+    if (!Number.isFinite(v) || v < seuil) continue;
+    if (v >= (vitesse[i - 1] ?? 0) && v > (vitesse[i + 1] ?? 0)) pics.push({ i, v, t: series[i].t });
+  }
+
+  // Un armé ou un replacement produit lui aussi un pic, mais il est toujours suivi de près
+  // par la frappe, bien plus rapide. On écarte donc les pics dominés par un voisin proche.
+  const retenus = pics.filter((p) => !pics.some(
+    (q) => q !== p && Math.abs(q.t - p.t) <= fenetreDomination && q.v > p.v * ratioDomination
+  ));
+
+  // Puis on garde les plus forts en respectant un écart minimal entre deux frappes.
+  retenus.sort((a, b) => b.v - a.v);
+  const gardes = [];
+  for (const pic of retenus) {
+    if (gardes.every((g) => Math.abs(g.t - pic.t) >= ecartMin)) gardes.push(pic);
+  }
+  return gardes.sort((a, b) => a.t - b.t);
+}
+
+/* ------------------------------------------------------------------ */
+/* 3. Mesures par frappe                                               */
+/* ------------------------------------------------------------------ */
+
+const fenetre = (series, t0, t1) =>
+  series.filter((s) => s.ok && s.t >= t0 && s.t <= t1);
+
+export function mesurerFrappe(series, pic, main) {
+  const contact = series[pic.i];
+  if (!contact?.ok) return null;
+
+  const clePoignet = main === 'D' ? 'poignetD' : 'poignetG';
+  const cleCoude = main === 'D' ? 'angleCoudeD' : 'angleCoudeG';
+  const cleEpaule = main === 'D' ? 'epauleD' : 'epauleG';
+  const cleAutrePoignet = main === 'D' ? 'poignetG' : 'poignetD';
+
+  const prep = fenetre(series, pic.t - 0.70, pic.t - 0.08);
+  const suivi = fenetre(series, pic.t + 0.04, pic.t + 0.60);
+  const global = fenetre(series, pic.t - 0.7, pic.t + 0.7);
+  const avant = fenetre(series, pic.t - 1.1, pic.t - 0.45);
+  if (!prep.length || !global.length) return null;
+
+  const sw = mediane(global.map((s) => s.sw));
+  const poignet = contact[clePoignet];
+
+  // Hauteur d'impact : 0 = hanche, 1 = épaule (l'axe y descend dans l'image)
+  const ecartTronc = contact.hanches.y - contact.epaules.y;
+  const hauteurImpact = ecartTronc > 0 ? (contact.hanches.y - poignet.y) / ecartTronc : NaN;
+
+  // Rotation des épaules : la ligne d'épaules « rétrécit » quand le buste se met de profil
+  const swMax = Math.max(...global.map((s) => s.sw));
+  const rotationEpaules = swMax > 0 ? Math.min(...prep.map((s) => s.sw)) / swMax : NaN;
+
+  // Flexion de genou la plus marquée pendant l'armé
+  const flexionGenou = Math.min(
+    ...prep.map((s) => Math.min(s.angleGenouG || 999, s.angleGenouD || 999))
+  );
+
+  // Stabilité : déplacement latéral du bassin et de la tête autour de l'impact
+  const proche = fenetre(series, pic.t - 0.25, pic.t + 0.25);
+  const xsBassin = proche.map((s) => s.hanches.x);
+  const deplacementBassin = xsBassin.length
+    ? (Math.max(...xsBassin) - Math.min(...xsBassin)) / sw : NaN;
+  const deplacementTete = proche.length
+    ? Math.max(...proche.map((s) => dist(s.nez, contact.nez))) / sw : NaN;
+
+  // Accompagnement : longueur du trajet du poignet après l'impact
+  let accompagnement = 0;
+  for (let i = 1; i < suivi.length; i++) {
+    accompagnement += dist(suivi[i - 1][clePoignet], suivi[i][clePoignet]) / sw;
+  }
+  const finGeste = suivi.at(-1);
+  const hauteurFin = finGeste && ecartTronc > 0
+    ? (finGeste.hanches.y - finGeste[clePoignet].y) / ecartTronc : NaN;
+
+  // Armé : longueur du trajet du poignet avant l'impact
+  let amplitudePrep = 0;
+  for (let i = 1; i < prep.length; i++) {
+    amplitudePrep += dist(prep[i - 1][clePoignet], prep[i][clePoignet]) / sw;
+  }
+
+  // Bras libre écarté du corps pendant l'armé (équilibre / repérage de balle)
+  const brasLibre = mediane(prep.map((s) => dist(s[cleAutrePoignet], s.epaules) / s.sw));
+
+  // Hauteur maximale du bras non dominant pendant l'armé (bras de lancer au service)
+  const hauteurBrasLibre = ecartTronc > 0
+    ? Math.max(...prep.map((s) => (s.hanches.y - s[cleAutrePoignet].y) / ecartTronc))
+    : NaN;
+
+  // Oscillation verticale du bassin avant la frappe → indice de split-step
+  const oscillation = avant.length > 2
+    ? (Math.max(...avant.map((s) => s.hanches.y)) - Math.min(...avant.map((s) => s.hanches.y))) / sw
+    : NaN;
+
+  // Type de coup
+  const auDessusTete = poignet.y < contact.nez.y;
+  let type;
+  if (auDessusTete && hauteurImpact > 1.6) {
+    type = 'service';
+  } else {
+    const coteBras = Math.sign(contact[cleEpaule].x - contact.hanches.x);
+    const cotePoignet = Math.sign(poignet.x - contact.hanches.x);
+    const croise = coteBras !== 0 && cotePoignet !== 0 && coteBras !== cotePoignet;
+    if (amplitudePrep < 0.85 && hauteurImpact > 0.1 && hauteurImpact < 1.4) {
+      type = croise ? 'volee-revers' : 'volee-coup-droit';
+    } else {
+      type = croise ? 'revers' : 'coup-droit';
+    }
+  }
+
+  return {
+    t: pic.t,
+    indice: pic.i,
+    type,
+    vitesse: pic.v,
+    hauteurImpact,
+    coudeImpact: contact[cleCoude],
+    rotationEpaules,
+    flexionGenou: Number.isFinite(flexionGenou) && flexionGenou < 900 ? flexionGenou : NaN,
+    deplacementBassin,
+    deplacementTete,
+    accompagnement,
+    hauteurFin,
+    amplitudePrep,
+    brasLibre,
+    hauteurBrasLibre,
+    oscillation,
+    busteImpact: contact.buste,
+  };
+}
+
+export const LIBELLES_COUP = {
+  'coup-droit': 'Coup droit',
+  'revers': 'Revers',
+  'service': 'Service',
+  'volee-coup-droit': 'Volée de coup droit',
+  'volee-revers': 'Volée de revers',
+};
+
+/* ------------------------------------------------------------------ */
+/* 4. Règles de coaching                                               */
+/* ------------------------------------------------------------------ */
+
+/** Génère les constats pour un groupe de frappes du même type. */
+function reglesGroupe(type, frappes) {
+  const c = [];
+  const n = frappes.length;
+  const libelle = LIBELLES_COUP[type] || type;
+  const med = (cle) => mediane(frappes.map((f) => f[cle]));
+  const est = (cle, seuil) => evaluer(med(cle), seuil);
+
+  const service = type === 'service';
+  const volee = type.startsWith('volee');
+
+  const ajouter = (o) => c.push({ coup: libelle, occurrences: n, ...o });
+
+  /* --- Bras de lancer (service) --- */
+  if (service) {
+    const hbl = med('hauteurBrasLibre');
+    if (Number.isFinite(hbl)) {
+      if (hbl >= 1.15) {
+        ajouter({
+          niveau: 'bon', titre: 'Bras de lancer bien tendu',
+          detail: "Ton bras non dominant monte haut et reste en l'air pendant l'armé : c'est ce qui garde le buste ouvert et le lancer régulier.",
+        });
+      } else {
+        ajouter({
+          niveau: hbl < 0.85 ? 'priorite' : 'corriger',
+          titre: 'Bras de lancer qui retombe trop tôt',
+          detail: `Ton bras de lancer redescend avant la frappe (hauteur ${hbl.toFixed(2)}, l'épaule vaut 1). Le buste s'affaisse, le point d'impact baisse et le lancer devient irrégulier.`,
+          exo: "Lancers seuls, sans frapper : lance la balle et garde le bras tendu vers elle jusqu'à ce qu'elle redescende à hauteur de tête. 15 répétitions, puis 10 services complets avec la même sensation.",
+        });
+      }
+    }
+  }
+
+  /* --- Rotation du tronc (coups de fond uniquement) --- */
+  if (!volee && !service) {
+    const r = est('rotationEpaules', SEUILS.rotationEpaules);
+    const v = med('rotationEpaules');
+    if (r.niveau === 'bon') {
+      ajouter({
+        niveau: 'bon', titre: 'Bonne rotation du tronc à la préparation',
+        detail: `Tes épaules se mettent nettement de profil avant la frappe (indice ${v.toFixed(2)}, plus c'est bas mieux c'est). C'est la source principale de la vitesse de balle.`,
+      });
+    } else if (r.niveau !== 'inconnu') {
+      ajouter({
+        niveau: r.niveau === 'mauvais' ? 'priorite' : 'corriger',
+        titre: 'Rotation du tronc insuffisante',
+        detail: `Tu prépares surtout avec le bras : la ligne d'épaules reste presque de face à l'armé (indice ${v.toFixed(2)}). Tu perds la chaîne cinétique jambes → hanches → épaules, donc de la vitesse gratuite, et tu sollicites davantage l'épaule.`,
+        exo: "Frappes sans balle : main libre posée sur le cadre, tourne les épaules jusqu'à voir ton dos de l'autre côté du filet avant de lâcher le geste. 3 séries de 10, puis 10 balles au panier en gardant la même sensation.",
+      });
+    }
+  }
+
+  /* --- Flexion des jambes --- */
+  const seuilGenou = service ? SEUILS.flexionService : SEUILS.flexionGenou;
+  const g = est('flexionGenou', seuilGenou);
+  const vg = med('flexionGenou');
+  if (g.niveau === 'bon') {
+    ajouter({
+      niveau: 'bon', titre: 'Bon engagement des jambes',
+      detail: `Genou le plus fléchi à ${Math.round(vg)}° pendant l'armé : tu charges bien tes appuis avant de frapper.`,
+    });
+  } else if (g.sens > 0) {
+    ajouter({
+      niveau: service ? 'priorite' : 'corriger',
+      titre: 'Jambes trop tendues',
+      detail: `Ton genou ne descend qu'à ${Math.round(vg)}° (référence ${seuilGenou.ideal[0]}–${seuilGenou.ideal[1]}°). ${service ? "Sans flexion, il n'y a pas d'extension explosive : le service reste un geste de bras." : "Tu frappes debout : la puissance vient alors du bras seul et l'équilibre est fragile sur les balles basses."}`,
+      exo: service
+        ? "Services au ralenti en marquant 1 seconde d'arrêt en position armée genoux fléchis, puis extension. 2 séries de 8, puis à vitesse normale."
+        : "Échanges avec consigne « toucher le genou du sol du regard » : sur chaque frappe, fléchis jusqu'à sentir la cuisse travailler avant de pousser.",
+    });
+  } else if (g.sens < 0 && g.niveau === 'mauvais') {
+    ajouter({
+      niveau: 'corriger', titre: 'Flexion excessive / position trop basse',
+      detail: `Genou à ${Math.round(vg)}° : tu t'accroupis plus que nécessaire, ce qui coûte de l'énergie et ralentit la récupération entre deux balles.`,
+      exo: "Travail de position d'attente : fléchis juste assez pour sentir le poids sur l'avant des pieds, puis enchaîne 10 déplacements latéraux.",
+    });
+  }
+
+  /* --- Hauteur et distance d'impact --- */
+  if (!service) {
+    const h = est('hauteurImpact', SEUILS.hauteurImpact);
+    const vh = med('hauteurImpact');
+    if (h.niveau === 'bon') {
+      ajouter({
+        niveau: 'bon', titre: "Bonne hauteur d'impact",
+        detail: `Tu frappes entre la hanche et l'épaule (indice ${vh.toFixed(2)}) : c'est la zone où tu contrôles le mieux la balle.`,
+      });
+    } else if (h.sens < 0) {
+      ajouter({
+        niveau: 'corriger', titre: 'Impact trop bas',
+        detail: `La balle est frappée sous la hanche (indice ${vh.toFixed(2)}). Souvent le signe d'une prise de balle en retard ou d'un manque de flexion : tu subis le rebond au lieu de le prendre montant.`,
+        exo: "Prise de balle en montée : place-toi un mètre à l'intérieur de la ligne de fond et frappe la balle avant qu'elle ne redescende. 20 répétitions au panier.",
+      });
+    } else if (h.sens > 0) {
+      ajouter({
+        niveau: 'corriger', titre: 'Impact très haut',
+        detail: `Impact au-dessus de l'épaule (indice ${vh.toFixed(2)}). Sur balle haute c'est normal ponctuellement, mais si ça se répète, recule d'un pas ou travaille la prise de balle plus tôt.`,
+        exo: "Alterne : 5 balles prises en montée juste après le rebond, 5 balles reculées et prises à la descente. Sens la différence de contrôle.",
+      });
+    }
+  }
+
+  /* --- Bras à l'impact --- */
+  const seuilCoude = service ? SEUILS.coudeService : SEUILS.coudeImpact;
+  const co = est('coudeImpact', seuilCoude);
+  const vco = med('coudeImpact');
+  if (co.niveau === 'bon') {
+    ajouter({
+      niveau: 'bon', titre: service ? 'Bonne extension au service' : 'Bonne distance à la balle',
+      detail: `Coude à ${Math.round(vco)}° à l'impact : ${service ? "tu frappes bras tendu, au point le plus haut." : "le bras est allongé sans être verrouillé, tu frappes à bonne distance du corps."}`,
+    });
+  } else if (co.sens < 0) {
+    ajouter({
+      niveau: co.niveau === 'mauvais' ? 'priorite' : 'corriger',
+      titre: service ? 'Service frappé bras plié' : 'Impact trop près du corps',
+      detail: `Coude à ${Math.round(vco)}° à l'impact (référence ${seuilCoude.ideal[0]}–${seuilCoude.ideal[1]}°). ${service ? "Tu perds beaucoup de hauteur d'impact, donc d'angle et de marge au-dessus du filet." : "Tu es coincé : la balle arrive dans les pieds et le geste se raccourcit."}`,
+      exo: service
+        ? "Service « pièce sur la raquette » : lance et frappe en cherchant à toucher le point le plus haut possible, sans forcer. Filme-toi de profil pour vérifier le bras tendu."
+        : "Consigne d'espacement : sur 15 balles, oblige-toi à faire un dernier petit pas d'ajustement pour frapper bras long, quitte à jouer plus lentement.",
+    });
+  } else if (co.sens > 0 && !service) {
+    ajouter({
+      niveau: 'corriger', titre: 'Bras trop verrouillé',
+      detail: `Coude quasiment bloqué à ${Math.round(vco)}° : le geste devient rigide, la tête de raquette accélère moins bien.`,
+      exo: "Travail de relâchement : frappe 10 balles à 60 % en cherchant à sentir la raquette « tomber » puis fouetter, coude légèrement souple.",
+    });
+  }
+
+  /* --- Accompagnement --- */
+  if (!volee) {
+    const a = est('accompagnement', SEUILS.accompagnement);
+    const va = med('accompagnement');
+    if (a.niveau === 'bon') {
+      ajouter({
+        niveau: 'bon', titre: 'Accompagnement complet',
+        detail: `Ton geste continue nettement après l'impact (amplitude ${va.toFixed(1)} largeurs d'épaules) : la raquette accélère à travers la balle.`,
+      });
+    } else if (a.sens < 0) {
+      ajouter({
+        niveau: 'priorite', titre: 'Geste coupé après la frappe',
+        detail: `L'accompagnement s'arrête très vite (${va.toFixed(1)} largeurs d'épaules). Quand on freine à l'impact, on décélère en réalité *avant* l'impact : perte de vitesse et de longueur de balle.`,
+        exo: "Finis systématiquement au-dessus de l'épaule opposée et garde la position 1 seconde. 20 balles avec ce seul objectif, sans regarder où va la balle.",
+      });
+    }
+  } else {
+    const va = med('accompagnement');
+    if (Number.isFinite(va) && va > 2.2) {
+      ajouter({
+        niveau: 'corriger', titre: 'Volée trop swinguée',
+        detail: `Ton geste de volée est long (${va.toFixed(1)} largeurs d'épaules). À la volée on bloque : geste court, poignet ferme, c'est l'avancée du corps qui donne la profondeur.`,
+        exo: "Volées contre un mur ou en demi-court, raquette qui ne dépasse jamais la ligne des épaules. 30 répétitions.",
+      });
+    }
+  }
+
+  /* --- Stabilité --- */
+  const sb = est('deplacementBassin', SEUILS.stabiliteBassin);
+  const st = est('deplacementTete', SEUILS.stabiliteTete);
+  if (sb.niveau === 'bon' && st.niveau === 'bon') {
+    ajouter({
+      niveau: 'bon', titre: 'Bon équilibre à la frappe',
+      detail: 'Tête et bassin restent stables au moment du contact : ta base est solide, le geste est reproductible.',
+    });
+  } else {
+    if (sb.sens > 0) {
+      ajouter({
+        niveau: sb.niveau === 'mauvais' ? 'priorite' : 'corriger',
+        titre: 'Bassin qui dérive à la frappe',
+        detail: `Ton bassin se déplace de ${med('deplacementBassin').toFixed(2)} largeur d'épaules autour de l'impact. Tu frappes en déséquilibre : la régularité en souffre plus que la puissance.`,
+        exo: "Frappes en fente : pose l'appui avant et interdis-toi de le décoller avant la fin du geste. 15 balles de chaque côté.",
+      });
+    }
+    if (st.sens > 0) {
+      ajouter({
+        niveau: st.niveau === 'mauvais' ? 'priorite' : 'corriger',
+        titre: 'Tête qui bouge à l\'impact',
+        detail: `Ta tête se déplace de ${med('deplacementTete').toFixed(2)} largeur d'épaules autour du contact. C'est la cause n°1 des fautes de centrage.`,
+        exo: "Consigne « regarder le point d'impact » : garde le regard sur la zone de contact jusqu'à la fin de l'accompagnement, ne suis pas la balle des yeux. 20 balles.",
+      });
+    }
+  }
+
+  /* --- Split-step --- */
+  const osc = med('oscillation');
+  if (Number.isFinite(osc) && !service) {
+    if (osc < 0.05) {
+      ajouter({
+        niveau: 'corriger', titre: 'Pas de split-step visible',
+        detail: `Le bassin ne monte quasiment pas avant la frappe (${osc.toFixed(3)}). Sans ce petit rebond au moment où l'adversaire frappe, tu pars systématiquement en retard sur la balle.`,
+        exo: "Exercice au panier : le coach annonce « hop » à chaque lancer, tu sautes légèrement et atterris sur l'avant des pieds juste avant de partir. 3 séries de 10.",
+      });
+    } else if (osc > 0.09) {
+      ajouter({
+        niveau: 'bon', titre: 'Reprise d\'appuis présente',
+        detail: "On voit un rebond du bassin avant les frappes : ton split-step est là, tu démarres avec les appuis dynamiques.",
+      });
+    }
+  }
+
+  /* --- Bras libre (coups de fond) --- */
+  if (!service && !volee) {
+    const bl = med('brasLibre');
+    if (Number.isFinite(bl) && bl < 0.55) {
+      ajouter({
+        niveau: 'corriger', titre: 'Bras libre collé au corps',
+        detail: `Ton bras non dominant reste près du buste pendant l'armé (${bl.toFixed(2)}). Il sert pourtant à mesurer la distance à la balle et à équilibrer la rotation.`,
+        exo: "Coup droit : pointe la balle du doigt avec la main libre pendant toute la préparation, puis ramène-la contre le buste au moment de la frappe. 20 répétitions.",
+      });
+    }
+  }
+
+  return c;
+}
+
+/** Règles globales, indépendantes du type de coup. */
+function reglesGlobales(frappes, duree, tauxDetection) {
+  const c = [];
+  if (tauxDetection < 0.7) {
+    c.push({
+      niveau: 'corriger', coup: 'Qualité vidéo',
+      titre: 'Détection partielle du joueur',
+      detail: `Le joueur n'a été détecté que sur ${Math.round(tauxDetection * 100)} % des images. Les mesures ci-dessous sont donc à prendre avec prudence.`,
+      exo: 'Refilme en cadrant le joueur en entier, caméra fixe, bon éclairage, et un seul joueur dans le champ.',
+    });
+  }
+  if (frappes.length && duree > 0) {
+    const cadence = (frappes.length / duree) * 60;
+    c.push({
+      niveau: 'info', coup: 'Général',
+      titre: `${frappes.length} frappe${frappes.length > 1 ? 's' : ''} détectée${frappes.length > 1 ? 's' : ''}`,
+      detail: `Soit environ ${Math.round(cadence)} frappes par minute sur la séquence analysée.`,
+    });
+  }
+  return c;
+}
+
+/* ------------------------------------------------------------------ */
+/* 5. Point d'entrée                                                   */
+/* ------------------------------------------------------------------ */
+
+export function analyser({ frames, largeur, hauteur, tauxDetection }, { main = 'auto' } = {}) {
+  const series = construireSeries(frames, largeur, hauteur);
+  const mainDominante = detecterMain(series, main);
+  const vitesse = vitessePoignet(series, mainDominante);
+  const pics = detecterFrappes(series, vitesse);
+
+  const frappes = pics
+    .map((pic) => mesurerFrappe(series, pic, mainDominante))
+    .filter(Boolean);
+
+  const duree = series.length ? series.at(-1).t - series[0].t : 0;
+
+  // Groupement par type, en fusionnant les volées avec leur coup de fond si trop peu nombreuses
+  const groupes = new Map();
+  for (const f of frappes) {
+    if (!groupes.has(f.type)) groupes.set(f.type, []);
+    groupes.get(f.type).push(f);
+  }
+
+  let constats = [];
+  for (const [type, liste] of groupes) {
+    if (liste.length === 0) continue;
+    constats = constats.concat(reglesGroupe(type, liste));
+  }
+  constats = constats.concat(reglesGlobales(frappes, duree, tauxDetection));
+
+  // Score : on part de 100 et on retire selon la gravité des constats
+  const penalites = { priorite: 15, corriger: 8, bon: 0, info: 0 };
+  const brut = constats.reduce((s, c) => s - (penalites[c.niveau] || 0), 100);
+  const bonus = Math.min(10, constats.filter((c) => c.niveau === 'bon').length * 2);
+  let score = borne(brut + bonus, 25, 100);
+  // Un point fort ne doit jamais effacer un défaut : on plafonne selon la gravité restante.
+  if (constats.some((c) => c.niveau === 'priorite')) score = Math.min(score, 82);
+  else if (constats.some((c) => c.niveau === 'corriger')) score = Math.min(score, 92);
+  score = frappes.length ? Math.round(score) : null;
+
+  const ordre = { priorite: 0, corriger: 1, bon: 2, info: 3 };
+  constats.sort((a, b) => ordre[a.niveau] - ordre[b.niveau]);
+
+  return {
+    series,
+    vitesse,
+    frappes,
+    constats,
+    score,
+    mainDominante,
+    duree,
+    tauxDetection,
+    groupes: [...groupes.entries()].map(([type, liste]) => ({
+      type,
+      libelle: LIBELLES_COUP[type] || type,
+      nombre: liste.length,
+      medianes: {
+        hauteurImpact: mediane(liste.map((f) => f.hauteurImpact)),
+        coudeImpact: mediane(liste.map((f) => f.coudeImpact)),
+        rotationEpaules: mediane(liste.map((f) => f.rotationEpaules)),
+        flexionGenou: mediane(liste.map((f) => f.flexionGenou)),
+        accompagnement: mediane(liste.map((f) => f.accompagnement)),
+        deplacementTete: mediane(liste.map((f) => f.deplacementTete)),
+        deplacementBassin: mediane(liste.map((f) => f.deplacementBassin)),
+        vitesse: mediane(liste.map((f) => f.vitesse)),
+      },
+    })),
+  };
+}
