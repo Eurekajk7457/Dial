@@ -44,7 +44,9 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
 10. **Ralenti** image par image autour de chaque impact, et **export du rapport** en texte, à montrer
     à un entraîneur.
 11. **Verdicts par frappe** : chaque mesure comparée à sa zone cible, avec la raison en clair
-    (« geste coupé au contact : tu freines avant la balle ») et la zone à viser.
+    (« geste coupé au contact : tu freines avant la balle ») et la fourchette visée, toujours affichée.
+    Quand la borne basse vaut zéro (rotation, stabilité), elle se lit « 0,28 ou moins » plutôt que
+    « 0 à 0,28 » : ces mesures se minimisent, elles ne s'encadrent pas.
 12. **Mesures expliquées** : une fiche dépliable par mesure — ce que ça mesure, l'échelle, pourquoi
     ça compte, le diagnostic personnel, un exercice, une jauge situant ta valeur dans la zone visée.
 13. **Vidéos** : chaque fiche technique, chaque mesure et chaque défaut relevé renvoie vers une
@@ -133,8 +135,11 @@ js/app.js           Interface, menu, rendu, verdicts, squelette, onglets
 - La classification volée / coup de fond est heuristique et peut se tromper sur des gestes courts.
 - Les seuils du référentiel sont des repères pour joueur amateur à confirmé, pas des vérités absolues.
 - Le premier chargement nécessite internet (modèle MediaPipe depuis un CDN) ; ensuite le navigateur le met en cache.
-- Les analyses rouvertes n'ont **pas d'images** : seules les mesures sont conservées, la vidéo n'ayant
-  jamais quitté l'appareil. Compter environ 9 Ko par analyse enregistrée.
+- Les analyses rouvertes n'ont **pas les images de la vidéo** — elle n'a jamais quitté l'appareil.
+  En revanche le **squelette** est conservé autour de chaque frappe (±0,8 s), donc le déroulé du geste
+  reste rejouable image par image. Compter environ 9 Ko par analyse, 30 à 40 Ko avec le déroulé ; ce
+  dernier n'est gardé que pour les **huit analyses les plus récentes**, et l'écriture s'allège toute
+  seule si le navigateur refuse (déroulés d'abord, puis détail des plus anciennes).
 
 Ce n'est pas un substitut à un entraîneur : c'est un outil pour repérer des tendances et savoir
 quoi lui montrer.

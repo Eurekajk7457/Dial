@@ -8,7 +8,7 @@ import {
 } from './analyse.js';
 import {
   FONDAMENTAUX, RESSOURCES, RESULTATS_BALLE, PRISES,
-  EXPLICATIONS, CHAINES_VIDEO, videoYouTube, videoConstat,
+  EXPLICATIONS, CHAINES_VIDEO, videoYouTube, videoConstat, libelleZone,
 } from './knowledge.js';
 import { analyserAvecClaude, poserQuestion } from './ai.js';
 import {
@@ -238,7 +238,8 @@ btnAnalyser.addEventListener('click', async () => {
     progres(1, 'Terminé.');
     setTimeout(() => { $('#progress').hidden = true; }, 800);
 
-    etat.idHistorique = enregistrer(etat.analyse)?.id || null;   // alimente le suivi dans le temps
+    // alimente le suivi dans le temps, avec le déroulé du geste pour pouvoir le rejouer
+    etat.idHistorique = enregistrer(etat.analyse, echantillon)?.id || null;
     $('#ia-echanges').innerHTML = '';
     $('#ia-resultat').innerHTML = '';
     afficherResultats(etat.analyse);
@@ -277,7 +278,7 @@ function rouvrirAnalyse(id) {
   if (!a) return;
   etat.analyse = a;
   etat.idHistorique = id;
-  etat.echantillon = null;      // les images n'ont jamais été conservées
+  etat.echantillon = a.echantillon;   // squelettes rejouables ; les images, elles, ne sont pas gardées
   etat.conversation = null;     // nouvelle séance : on repart d'une discussion vierge
   $('#ia-echanges').innerHTML = '';
   $('#ia-resultat').innerHTML = '';
@@ -378,21 +379,25 @@ function rendreSynthese(a) {
 }
 
 /** Dessine une image échantillonnée avec son squelette sur un canvas. */
+/**
+ * Dessine une image de la séquence. Avec la photo quand on l'a, sinon le squelette seul
+ * sur fond clair — c'est le cas d'une analyse rouverte, où seul le geste a été conservé.
+ */
 function peindreFrame(cv, frame) {
   const ctx = cv.getContext('2d');
-  const squelette = () => {
-    if (frame?.pts) dessinerSquelette(ctx, frame.pts, cv.width, cv.height, { epaisseur: 2.5 });
+  const squelette = (couleur) => {
+    if (frame?.pts) dessinerSquelette(ctx, frame.pts, cv.width, cv.height, { epaisseur: 2.5, couleur });
   };
   ctx.clearRect(0, 0, cv.width, cv.height);
   if (frame?.vignette) {
     const img = new Image();
     img.onload = () => { ctx.drawImage(img, 0, 0, cv.width, cv.height); squelette(); };
-    img.onerror = squelette;
+    img.onerror = () => squelette();
     img.src = frame.vignette;
   } else {
     ctx.fillStyle = '#e9ede9';   // même gris que les surfaces creuses du thème clair
     ctx.fillRect(0, 0, cv.width, cv.height);
-    squelette();
+    squelette('#0f6b52');        // sur fond clair, le vert de marque se lit mieux que le jaune
   }
 }
 
@@ -406,8 +411,13 @@ function rendreCoups(a) {
 
   const intro = el('div', 'coups-intro');
   intro.innerHTML = a.sansImages
-    ? `<p>Analyse rouverte depuis ton historique. Les mesures et les verdicts sont là ;
-       les images, elles, n'ont jamais été enregistrées — ta vidéo n'a pas quitté ton téléphone.</p>`
+    ? (etat.echantillon
+      ? `<p>Analyse rouverte depuis ton historique. Le <strong>déroulé du geste</strong> est rejouable
+         image par image avec les flèches — c'est le squelette qui a été enregistré, pas la vidéo :
+         elle n'a jamais quitté ton téléphone.</p>`
+      : `<p>Analyse rouverte depuis ton historique. Les mesures et les verdicts sont là, mais le
+         déroulé du geste n'a pas été gardé pour cette séance : seules les huit analyses les plus
+         récentes le conservent.</p>`)
     : `<p>Frappe par frappe : ce qui va, ce qui ne va pas, et pourquoi. Tu peux
        <strong>avancer image par image</strong> autour de l'impact avec les flèches, et
        <strong>dire où la balle est partie</strong>.</p>
@@ -497,7 +507,7 @@ function rendreCoups(a) {
         `<span class="v-corps"><span class="v-titre">${echapper(v.libelle)}` +
         `<span class="v-valeur">${echapper(v.texte)}</span></span>` +
         `<span class="v-message">${echapper(v.message)}</span>` +
-        (v.niveau === 'bon' ? '' : `<span class="v-zone">à viser : ${echapper(v.zone)}</span>`) +
+        `<span class="v-zone">zone à viser : ${echapper(v.zone)}</span>` +
         `</span>`;
       liste.appendChild(item);
     }
@@ -522,7 +532,7 @@ function rendreCoups(a) {
     choix.appendChild(select);
     infos.appendChild(choix);
 
-    if (frames && Number.isFinite(f.indice)) {
+    if (frames && Number.isFinite(f.indice) && !a.sansImages) {
       const voir = el('button', 'ghost lien-video', 'Voir dans la vidéo');
       voir.type = 'button';
       voir.addEventListener('click', () => {
@@ -581,6 +591,11 @@ function rendreMesures(a) {
   vue.appendChild(el('p', null,
     "Chaque mesure est expliquée : ce qu'elle regarde, pourquoi ça compte pour ton tennis, " +
     "et quoi faire si tu es hors de la zone. La valeur affichée est la médiane de tes frappes."));
+  vue.appendChild(el('p', 'note',
+    "La « zone » est la fourchette dans laquelle se situent les joueurs qui exécutent bien ce coup " +
+    "(repères de coaching ITF / FFT / USTA, du joueur de club au joueur confirmé). Y être ne veut pas " +
+    "dire que c'est parfait, en sortir ne veut pas dire que c'est raté : c'est un repère, pas une note. " +
+    "Elle est indiquée sur chaque mesure ; touche une mesure pour voir le détail."));
 
   for (const g of a.groupes) {
     vue.appendChild(el('h3', null, `${echapper(g.libelle)} — ${g.nombre} frappe(s)`));
@@ -596,10 +611,19 @@ function rendreMesures(a) {
 
       const carte = el('details', `mesure ${dedans === null ? '' : dedans ? 'ok' : 'ko'}`);
       const etat_ = dedans === null ? 'repère' : dedans ? 'dans la zone' : 'hors zone';
+      // Sans seuil (la vitesse), annoncer une « zone à viser » n'aurait pas de sens.
+      const fourchette = seuil
+        ? `zone à viser : ${libelleZone(seuil, def.unite)}`
+        : 'pas de zone : ce chiffre sert à comparer tes frappes entre elles';
       carte.innerHTML = `<summary>
-        <span class="m-nom">${echapper(def.libelle)}</span>
-        <span class="m-valeur">${echapper(valeur.toFixed(def.decimales) + def.unite)}</span>
-        <span class="m-etat">${echapper(etat_)}</span>
+        <span class="m-ligne">
+          <span class="m-nom">${echapper(def.libelle)}</span>
+          <span class="m-valeur">${echapper(valeur.toFixed(def.decimales) + def.unite)}</span>
+        </span>
+        <span class="m-ligne m-bas">
+          <span class="m-etat">${echapper(etat_)}</span>
+          <span class="m-zone">${echapper(fourchette)}</span>
+        </span>
       </summary>`;
 
       if (seuil) carte.appendChild(jauge(valeur, seuil, def.decimales, def.unite));
@@ -615,7 +639,7 @@ function rendreMesures(a) {
         corps.innerHTML += `<p class="m-diagnostic"><strong>Chez toi.</strong> ${echapper(def[sens])}</p>`;
       } else if (seuil) {
         corps.innerHTML += `<p class="m-diagnostic ok"><strong>Chez toi.</strong> Tu es dans la zone visée ` +
-          `(${echapper(seuil.ideal[0] + def.unite)} à ${echapper(seuil.ideal[1] + def.unite)}). Rien à changer ici.</p>`;
+          `(${echapper(libelleZone(seuil, def.unite))}). Rien à changer ici.</p>`;
       }
       if (def.exercice) corps.innerHTML += `<p class="exo"><strong>Exercice :</strong> ${echapper(def.exercice)}</p>`;
       corps.appendChild(lienVideo(def.requeteVideo, 'Voir des vidéos sur ce point'));

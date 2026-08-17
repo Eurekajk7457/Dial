@@ -4,7 +4,7 @@
  */
 
 import { P, angle, dist, milieu, inclinaisonBuste, lisser } from './pose.js';
-import { SEUILS, SEUILS_REGULARITE, EXPLICATIONS } from './knowledge.js';
+import { SEUILS, SEUILS_REGULARITE, EXPLICATIONS, libelleZone } from './knowledge.js';
 
 /* ------------------------------------------------------------------ */
 /* Utilitaires                                                         */
@@ -321,7 +321,7 @@ export function verdictsFrappe(frappe) {
       niveau,               // bon / moyen / mauvais
       sens,                 // -1 sous la zone, +1 au-dessus
       message,
-      zone: `${seuil.ideal[0]} – ${seuil.ideal[1]}`,
+      zone: libelleZone(seuil, def.unite),
       requeteVideo: def.requeteVideo,
     };
   }).filter(Boolean);

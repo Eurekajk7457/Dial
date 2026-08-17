@@ -158,6 +158,17 @@ const VIDEOS_CONSTAT = {
   'Bras libre collé au corps': 'bras libre tennis équilibre coup droit',
 };
 
+/**
+ * Formule la fourchette visée en français. Quand la borne basse vaut zéro, la mesure est
+ * un défaut à minimiser (rotation, stabilité) : « 0 à 0,28 » se lit mal, « 0,28 ou moins » se lit.
+ */
+export function libelleZone(seuil, unite = '') {
+  if (!seuil) return null;
+  const [bas, haut] = seuil.ideal;
+  const n = (v) => String(v).replace('.', ',') + unite;
+  return bas === 0 ? `${n(haut)} ou moins` : `${n(bas)} à ${n(haut)}`;
+}
+
 /** Requête vidéo pour un défaut, ou null s'il n'y a rien de pertinent à montrer. */
 export function videoConstat(titre) {
   const req = VIDEOS_CONSTAT[titre];

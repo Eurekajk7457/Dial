@@ -45,7 +45,11 @@ export function lireHistorique() {
  * ne doit jamais disparaître — puis en supprimant les plus vieilles entrées.
  */
 function ecrire(liste) {
-  const garder = liste.slice(-MAX_ENTREES);
+  // Le déroulé du geste est ce qui pèse le plus : seules les analyses récentes le gardent.
+  const garder = liste.slice(-MAX_ENTREES).map((e, i, tab) =>
+    (i < tab.length - MAX_SEQUENCES && e.detail?.sequence)
+      ? { ...e, detail: { ...e.detail, sequence: null } }
+      : e);
 
   for (let allegees = 0; allegees <= garder.length; allegees++) {
     const essai = garder.map((e, i) => (i < allegees ? { ...e, detail: undefined } : e));
@@ -64,6 +68,55 @@ function ecrire(liste) {
   }
 }
 
+/**
+ * Nombre d'analyses qui gardent le déroulé du geste image par image.
+ * Les images de la vidéo ne sont jamais conservées (trop lourdes, et la vidéo doit rester
+ * sur l'appareil) : on garde le squelette, qui pèse mille fois moins et montre le mouvement.
+ */
+const MAX_SEQUENCES = 8;
+const FENETRE_SEQUENCE = 0.8;   // secondes conservées de part et d'autre de chaque frappe
+
+/** Comprime les points d'une image en une simple liste de nombres à trois décimales. */
+const comprimerPoints = (pts) => {
+  const plat = [];
+  for (const p of pts) { plat.push(Math.round(p.x * 1000) / 1000, Math.round(p.y * 1000) / 1000); }
+  return plat;
+};
+
+const decomprimerPoints = (plat) => {
+  const pts = [];
+  for (let i = 0; i < plat.length; i += 2) pts.push({ x: plat[i], y: plat[i + 1] });
+  return pts;
+};
+
+/**
+ * Extrait le déroulé du geste : les images situées autour de chaque frappe, sans doublon.
+ * Chaque frappe reçoit son indice dans cette liste pour retrouver son instant d'impact.
+ */
+function construireSequence(analyse, echantillon) {
+  const source = echantillon?.frames;
+  if (!source?.length) return null;
+
+  const gardees = new Set();
+  for (const f of analyse.frappes) {
+    source.forEach((img, i) => {
+      if (img.pts && Math.abs(img.t - f.t) <= FENETRE_SEQUENCE) gardees.add(i);
+    });
+  }
+  if (!gardees.size) return null;
+
+  const indices = [...gardees].sort((a, b) => a - b);
+  const position = new Map(indices.map((src, dest) => [src, dest]));
+
+  return {
+    largeur: echantillon.largeur,
+    hauteur: echantillon.hauteur,
+    frames: indices.map((i) => ({ t: Math.round(source[i].t * 1000) / 1000, p: comprimerPoints(source[i].pts) })),
+    // Indice de l'image d'impact de chaque frappe, dans la nouvelle liste
+    impacts: analyse.frappes.map((f) => position.get(f.indice) ?? null),
+  };
+}
+
 /** Mesures conservées frappe par frappe, pour pouvoir rouvrir une analyse plus tard. */
 const MESURES_FRAPPE = [
   'hauteurImpact', 'coudeImpact', 'rotationEpaules', 'flexionGenou', 'accompagnement',
@@ -74,13 +127,14 @@ const MESURES_FRAPPE = [
  * Résumé compact d'une analyse, plus le détail nécessaire pour la rouvrir telle quelle.
  * Ce qui n'est pas gardé : les images (trop lourdes) et les points de posture image par image.
  */
-export function enregistrer(analyse) {
+export function enregistrer(analyse, echantillon = null) {
   if (!analyse?.frappes?.length) return null;
 
   const detail = {
     tauxDetection: analyse.tauxDetection,
     mainDominante: analyse.mainDominante,
     duree: analyse.duree,
+    sequence: construireSequence(analyse, echantillon),
     constats: analyse.constats || [],
     frappes: analyse.frappes.map((f) => {
       const garde = { t: f.t, type: f.type, resultat: f.resultat || '' };
@@ -133,17 +187,29 @@ export function lireAnalyse(id) {
   const e = lireHistorique().find((x) => x.id === id);
   if (!e?.detail) return null;
 
+  const seq = e.detail.sequence;
+  const frappes = (e.detail.frappes || []).map((f, i) => ({
+    ...f,
+    indice: seq?.impacts?.[i] ?? null,
+  }));
+
   return {
     id: e.id,
     date: e.date,
     sansImages: true,
+    // Le déroulé du geste rejoué à partir des squelettes enregistrés, quand on l'a encore
+    echantillon: seq ? {
+      largeur: seq.largeur,
+      hauteur: seq.hauteur,
+      frames: seq.frames.map((img) => ({ t: img.t, pts: decomprimerPoints(img.p), vignette: null })),
+    } : null,
     score: e.score,
     duree: e.detail.duree ?? e.duree,
     tauxDetection: e.detail.tauxDetection ?? 0,
     mainDominante: e.detail.mainDominante || 'D',
     profil: e.profil || {},
     constats: e.detail.constats || [],
-    frappes: e.detail.frappes || [],
+    frappes,
     groupes: e.groupes || [],
   };
 }
