@@ -4,6 +4,10 @@ Web app **100 % statique** (HTML/CSS/JS, aucun build, aucun serveur) : tu envoie
 en train de jouer, et tu obtiens une analyse technique — ce qui fonctionne, ce qu'il faut corriger,
 et des exercices concrets.
 
+**En ligne : https://eurekajk7457.github.io/Dial/** — publié depuis la branche
+`claude/tennis-video-analysis-app-514378` via GitHub Pages. Fonctionne aussi bien sur téléphone
+que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une icône d'application.
+
 ## Ce que ça fait
 
 1. **Détection de posture image par image**, dans le navigateur (MediaPipe Pose).
