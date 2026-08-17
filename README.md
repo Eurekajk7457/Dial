@@ -20,15 +20,28 @@ et des exercices concrets.
 
 ## Utilisation
 
-Ouvre `index.html` — c'est tout. Pour éviter les restrictions des modules ES en `file://`,
-sers le dossier :
+**Le plus simple : télécharge `dial-tennis.html` et ouvre-le d'un double-clic.** Ce fichier
+contient toute l'app ; il a juste besoin d'une connexion internet au premier lancement pour
+récupérer le modèle de détection de posture.
+
+Pour la version en dossier (celle qu'on modifie), sers-la localement — les modules ES ne
+se chargent pas en `file://` :
 
 ```bash
-python3 -m http.server 8000
-# puis http://localhost:8000
+python3 -m http.server 8000   # puis http://localhost:8000
 ```
 
-Ou publie-le tel quel sur GitHub Pages / Netlify / Vercel (aucune étape de build).
+Ou publie le dossier tel quel sur GitHub Pages / Netlify / Vercel (aucune étape de build).
+C'est la seule façon de l'utiliser depuis un téléphone.
+
+### Régénérer le fichier unique
+
+`dial-tennis.html` est produit à partir de `index.html`, `css/` et `js/`. Après toute
+modification :
+
+```bash
+node build-fichier-unique.mjs
+```
 
 ### Analyse IA (optionnelle)
 
@@ -52,6 +65,8 @@ Modèle utilisé : `claude-opus-5`, appelé directement depuis le navigateur
 
 ```
 index.html          Interface et étapes
+dial-tennis.html    Copie autonome en un seul fichier (générée, ne pas éditer à la main)
+build-fichier-unique.mjs  Génère dial-tennis.html depuis les sources
 css/styles.css      Thème sombre, responsive
 js/pose.js          Chargement MediaPipe, échantillonnage vidéo, géométrie
 js/analyse.js       Séries temporelles, détection de frappes, mesures, moteur de règles

@@ -119,7 +119,16 @@ export async function echantillonner(video, { debut = 0, duree = 30, fps = 12, o
     }
     if (pts) detectees++;
 
-    frames.push({ t, pts, vignette: cv.toDataURL('image/jpeg', 0.6) });
+    // En local (fichier ouvert directement), certains navigateurs interdisent de relire
+    // les pixels d'une vidéo : on continue sans vignette plutôt que d'interrompre l'analyse.
+    let vignette = null;
+    try {
+      vignette = cv.toDataURL('image/jpeg', 0.6);
+    } catch {
+      vignette = null;
+    }
+
+    frames.push({ t, pts, vignette });
 
     if (i % 3 === 0 || i === total - 1) {
       onProgres((i + 1) / total, `Analyse des images : ${i + 1} / ${total}`);

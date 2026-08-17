@@ -1,0 +1,1952 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dial Tennis — Analyse vidéo de ton jeu</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23d8f24a'/%3E%3Cpath d='M4 8a14 14 0 0 1 0 16M28 8a14 14 0 0 0 0 16' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #0e1116;
+  --bg2: #161b23;
+  --bg3: #1e242e;
+  --txt: #e8ecf2;
+  --txt2: #9aa5b4;
+  --line: #2a3340;
+  --acc: #d8f24a;
+  --acc2: #7bd389;
+  --warn: #ffb45e;
+  --bad: #ff7a7a;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+
+/* Une règle `display` explicite écrase l'attribut hidden : on rétablit la priorité. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--txt);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+h1, h2, h3, h4 { line-height: 1.25; margin: 0 0 .5em; }
+h1 { font-size: 1.3rem; }
+h2 { font-size: 1.1rem; letter-spacing: .01em; }
+p { margin: 0 0 .8em; }
+a { color: var(--acc); }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); background: var(--bg2);
+  position: sticky; top: 0; z-index: 10;
+}
+.brand { display: flex; align-items: center; gap: .8rem; }
+.brand p { margin: 0; color: var(--txt2); font-size: .85rem; }
+.ball {
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 30% 30%, #eaff6b, #b6d417);
+  box-shadow: inset -3px -3px 6px rgba(0,0,0,.35);
+}
+
+main { max-width: 1000px; margin: 0 auto; padding: 1.25rem; }
+
+.card {
+  background: var(--bg2); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.25rem; margin-bottom: 1.25rem;
+}
+
+/* Dropzone */
+.dropzone {
+  border: 2px dashed var(--line); border-radius: var(--radius);
+  padding: 2.5rem 1rem; text-align: center; cursor: pointer;
+  display: flex; flex-direction: column; gap: .4rem; align-items: center;
+  transition: border-color .15s, background .15s;
+}
+.dropzone:hover, .dropzone:focus-visible, .dropzone.survol {
+  border-color: var(--acc); background: rgba(216,242,74,.05); outline: none;
+}
+.dropzone span { color: var(--txt2); font-size: .9rem; }
+
+/* Vidéo */
+.video-wrap { position: relative; background: #000; border-radius: var(--radius); overflow: hidden; }
+video { display: block; width: 100%; max-height: 55vh; object-fit: contain; }
+.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+.options {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: .75rem; margin: 1rem 0;
+}
+label { display: block; font-size: .82rem; color: var(--txt2); }
+label.ligne { display: flex; align-items: center; gap: .5rem; color: var(--txt); }
+select, input[type=number], input[type=text], input[type=password] {
+  width: 100%; margin-top: .3rem; padding: .55rem .65rem;
+  background: var(--bg3); color: var(--txt);
+  border: 1px solid var(--line); border-radius: 9px; font: inherit;
+}
+input[type=checkbox] { width: auto; margin: 0; accent-color: var(--acc); }
+
+.actions { display: flex; gap: .6rem; flex-wrap: wrap; }
+button {
+  font: inherit; font-weight: 600; padding: .6rem 1.1rem;
+  border-radius: 10px; border: 1px solid var(--line); cursor: pointer;
+}
+button.primary { background: var(--acc); color: #16200a; border-color: transparent; }
+button.primary:hover { filter: brightness(1.08); }
+button.ghost { background: transparent; color: var(--txt); }
+button.ghost:hover { background: var(--bg3); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Progression */
+.progress { margin-top: 1rem; }
+.bar { height: 8px; background: var(--bg3); border-radius: 99px; overflow: hidden; }
+.bar > div { height: 100%; width: 0; background: var(--acc); transition: width .2s; }
+#progress-label { color: var(--txt2); font-size: .85rem; margin: .5rem 0 0; }
+
+.erreur { color: var(--bad); font-size: .9rem; }
+.note { color: var(--txt2); font-size: .85rem; }
+
+/* Onglets */
+.onglets { display: flex; gap: .3rem; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin-bottom: 1rem; }
+.onglet {
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: var(--txt2); border-radius: 0; padding: .55rem .8rem;
+}
+.onglet.actif { color: var(--txt); border-bottom-color: var(--acc); }
+
+/* Score */
+.score-bloc { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
+.score-cercle {
+  width: 92px; height: 92px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font-size: 1.6rem; font-weight: 700;
+  background: conic-gradient(var(--acc) var(--pct, 0%), var(--bg3) 0);
+  position: relative;
+}
+.score-cercle::after {
+  content: ""; position: absolute; inset: 8px; border-radius: 50%; background: var(--bg2);
+}
+.score-cercle span { position: relative; z-index: 1; }
+
+/* Constats */
+.constat {
+  border: 1px solid var(--line); border-left: 4px solid var(--txt2);
+  border-radius: 10px; padding: .85rem 1rem; margin-bottom: .7rem; background: var(--bg3);
+}
+.constat.bon { border-left-color: var(--acc2); }
+.constat.corriger { border-left-color: var(--warn); }
+.constat.priorite { border-left-color: var(--bad); }
+.constat h4 { margin: 0 0 .35rem; font-size: .98rem; }
+.constat p { margin: 0 0 .4rem; font-size: .9rem; }
+.constat .exo { font-size: .85rem; color: var(--txt2); }
+.constat .exo strong { color: var(--txt); }
+.badge {
+  display: inline-block; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em;
+  padding: .12rem .45rem; border-radius: 99px; background: var(--bg2); color: var(--txt2);
+  border: 1px solid var(--line); margin-left: .4rem; vertical-align: middle;
+}
+
+/* Coups */
+.coups-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; }
+.coup-carte { background: var(--bg3); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.coup-carte canvas, .coup-carte img { display: block; width: 100%; background: #000; }
+.coup-carte .infos { padding: .7rem .8rem; }
+.coup-carte h4 { margin: 0 0 .3rem; font-size: .95rem; }
+.coup-carte dl { display: grid; grid-template-columns: 1fr auto; gap: .15rem .5rem; margin: 0; font-size: .82rem; }
+.coup-carte dt { color: var(--txt2); }
+.coup-carte dd { margin: 0; text-align: right; }
+
+/* Tableau mesures */
+table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--line); }
+th { color: var(--txt2); font-weight: 600; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Fondamentaux */
+details.fond {
+  background: var(--bg3); border: 1px solid var(--line); border-radius: 10px;
+  padding: .7rem .9rem; margin-bottom: .6rem;
+}
+details.fond summary { cursor: pointer; font-weight: 600; }
+details.fond ul { margin: .6rem 0; padding-left: 1.2rem; }
+details.fond li { margin-bottom: .3rem; font-size: .9rem; }
+
+/* IA */
+.ia-config { display: grid; gap: .75rem; margin-bottom: 1.2rem; }
+.ia-resultat { font-size: .95rem; }
+.ia-resultat h3 { margin-top: 1.2rem; }
+.ia-resultat ul { padding-left: 1.2rem; }
+.ia-resultat .sources { font-size: .85rem; color: var(--txt2); }
+
+dialog {
+  background: var(--bg2); color: var(--txt); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1.5rem; max-width: 520px;
+}
+dialog::backdrop { background: rgba(0,0,0,.6); }
+dialog ul { padding-left: 1.2rem; }
+dialog li { margin-bottom: .45rem; font-size: .9rem; }
+
+footer { max-width: 1000px; margin: 0 auto; padding: 0 1.25rem 2.5rem; color: var(--txt2); font-size: .82rem; }
+
+@media (max-width: 560px) {
+  .topbar { flex-direction: column; align-items: flex-start; }
+  .score-bloc { gap: .8rem; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="ball" aria-hidden="true"></span>
+    <div>
+      <h1>Dial Tennis</h1>
+      <p>Envoie une vidéo, reçois une analyse technique et des conseils</p>
+    </div>
+  </div>
+  <button id="btn-aide" class="ghost" type="button">Comment filmer ?</button>
+</header>
+
+<main>
+
+  <!-- ÉTAPE 1 : IMPORT -->
+  <section class="card" id="etape-import">
+    <h2>1. Ta vidéo</h2>
+
+    <div id="dropzone" class="dropzone" tabindex="0" role="button"
+         aria-label="Déposer une vidéo ou cliquer pour choisir un fichier">
+      <strong>Dépose ta vidéo ici</strong>
+      <span>ou clique pour choisir un fichier (mp4, mov, webm — reste sur ton appareil)</span>
+      <input type="file" id="file-input" accept="video/*" hidden>
+    </div>
+
+    <div id="video-zone" class="video-zone" hidden>
+      <div class="video-wrap">
+        <video id="video" playsinline controls muted preload="metadata"></video>
+        <canvas id="overlay" class="overlay"></canvas>
+      </div>
+
+      <div class="options">
+        <label>Main dominante
+          <select id="opt-main">
+            <option value="auto" selected>Détection auto</option>
+            <option value="right">Droitier</option>
+            <option value="left">Gaucher</option>
+          </select>
+        </label>
+        <label>Début (s)
+          <input type="number" id="opt-debut" value="0" min="0" step="0.5">
+        </label>
+        <label>Durée analysée (s)
+          <input type="number" id="opt-duree" value="30" min="3" max="120" step="1">
+        </label>
+        <label>Images / seconde
+          <select id="opt-fps">
+            <option value="8">8 (rapide)</option>
+            <option value="12" selected>12 (équilibré)</option>
+            <option value="20">20 (précis, plus lent)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button id="btn-analyser" class="primary" type="button">Analyser la technique</button>
+        <button id="btn-reset" class="ghost" type="button">Changer de vidéo</button>
+      </div>
+
+      <div id="progress" class="progress" hidden>
+        <div class="bar"><div id="progress-fill"></div></div>
+        <p id="progress-label">Préparation…</p>
+      </div>
+      <p id="import-erreur" class="erreur" hidden></p>
+    </div>
+  </section>
+
+  <!-- ÉTAPE 2 : RÉSULTATS -->
+  <section class="card" id="etape-resultats" hidden>
+    <h2>2. Résultats</h2>
+
+    <nav class="onglets" role="tablist">
+      <button class="onglet actif" data-vue="synthese" role="tab">Synthèse</button>
+      <button class="onglet" data-vue="coups" role="tab">Coups détectés</button>
+      <button class="onglet" data-vue="mesures" role="tab">Mesures</button>
+      <button class="onglet" data-vue="ia" role="tab">Conseils IA</button>
+      <button class="onglet" data-vue="fondamentaux" role="tab">Fondamentaux</button>
+    </nav>
+
+    <div class="vue" id="vue-synthese"></div>
+    <div class="vue" id="vue-coups" hidden></div>
+    <div class="vue" id="vue-mesures" hidden></div>
+
+    <div class="vue" id="vue-ia" hidden>
+      <div class="ia-config">
+        <p class="note">
+          Analyse approfondie facultative : les images clés et les mesures sont envoyées à l'API Claude
+          (Anthropic) avec <em>ta</em> clé. Sans clé, tout le reste de l'app fonctionne hors ligne.
+        </p>
+        <label>Clé API Anthropic
+          <input type="password" id="ia-cle" placeholder="sk-ant-..." autocomplete="off">
+        </label>
+        <label class="ligne">
+          <input type="checkbox" id="ia-memoriser"> Mémoriser dans ce navigateur (localStorage)
+        </label>
+        <label class="ligne">
+          <input type="checkbox" id="ia-web" checked> Chercher des références en ligne (recherche web)
+        </label>
+        <label>Ton niveau
+          <select id="ia-niveau">
+            <option value="debutant">Débutant</option>
+            <option value="intermediaire" selected>Intermédiaire (club)</option>
+            <option value="avance">Avancé / compétition</option>
+          </select>
+        </label>
+        <label>Objectif / question (facultatif)
+          <input type="text" id="ia-objectif" placeholder="ex : gagner en puissance en coup droit sans perdre le contrôle">
+        </label>
+        <button id="btn-ia" class="primary" type="button">Lancer l'analyse IA</button>
+        <p id="ia-statut" class="note" hidden></p>
+        <p id="ia-erreur" class="erreur" hidden></p>
+      </div>
+      <article id="ia-resultat" class="ia-resultat"></article>
+    </div>
+
+    <div class="vue" id="vue-fondamentaux" hidden></div>
+  </section>
+
+  <!-- FONDAMENTAUX seuls (avant analyse) -->
+  <section class="card" id="etape-biblio">
+    <h2>Les fondamentaux, en attendant</h2>
+    <div id="biblio"></div>
+  </section>
+
+</main>
+
+<dialog id="dlg-aide">
+  <h3>Comment filmer pour une bonne analyse</h3>
+  <ul>
+    <li><strong>Angle</strong> : de côté (perpendiculaire à la ligne de fond) pour le coup droit / revers, de face ou 3/4 arrière pour le service.</li>
+    <li><strong>Cadrage</strong> : joueur entier, des pieds à la raquette levée. Un peu d'air au-dessus de la tête.</li>
+    <li><strong>Distance</strong> : 5 à 10 m, caméra à hauteur de hanche, posée ou sur trépied (évite le zoom et le panoramique).</li>
+    <li><strong>Durée</strong> : 15 à 30 s suffisent — 4 à 8 frappes du même coup valent mieux qu'un long échange.</li>
+    <li><strong>Lumière</strong> : de face ou latérale, pas à contre-jour. 60 fps si ton téléphone le permet.</li>
+    <li><strong>Un seul joueur visible</strong> si possible : la détection suit une seule personne.</li>
+  </ul>
+  <form method="dialog"><button class="primary">Compris</button></form>
+</dialog>
+
+<footer>
+  <p>
+    La vidéo n'est jamais téléversée : la détection de posture tourne dans ton navigateur.
+    Seule l'analyse IA facultative envoie quelques images clés à l'API Anthropic.
+  </p>
+</footer>
+
+<script>
+/* ===== js/knowledge.js ===== */
+/**
+ * Base de connaissances technique — repères de coaching classiques
+ * (fédérations : ITF / FFT / USTA, littérature d'entraînement courante).
+ * Sert à la fois de référentiel pour le moteur de règles et de fiche de lecture.
+ */
+
+const FONDAMENTAUX = [
+  {
+    id: 'coup-droit',
+    titre: 'Coup droit',
+    resume: "Chaîne cinétique du sol vers la balle : jambes → hanches → épaules → bras → raquette.",
+    points: [
+      "Préparation tôt : épaules tournées dès que la trajectoire adverse est lue (unit turn), main libre pointée vers la balle.",
+      "Appuis : semi-ouvert ou ouvert en fond de court, fermé quand tu avances. Poids sur la jambe arrière puis transfert.",
+      "Boucle de préparation fluide, tête de raquette au-dessus du poignet, coude devant le corps.",
+      "Point d'impact devant la hanche avant, à hauteur entre hanche et épaule, bras allongé mais pas verrouillé.",
+      "Séparation hanches / épaules (X-factor) : les hanches ouvrent avant les épaules, c'est là que naît la vitesse.",
+      "Finition au-dessus de l'épaule opposée ou en lasso ; la raquette décélère après la balle, jamais avant.",
+    ],
+    erreurs: [
+      "Préparation tardive → frappe en retard, balle courte au centre.",
+      "Bras seul, sans rotation du tronc → puissance faible et épaule qui souffre.",
+      "Impact trop près du corps ou derrière la hanche.",
+      "Fin de geste coupée : la raquette s'arrête à l'impact.",
+    ],
+  },
+  {
+    id: 'revers',
+    titre: 'Revers (une ou deux mains)',
+    resume: "Le revers vit de la rotation du tronc et d'un appui avant solide.",
+    points: [
+      "Rotation d'épaules encore plus marquée qu'en coup droit : le dos doit presque se voir depuis l'autre côté du filet.",
+      "Deux mains : la main non dominante tire le geste, les deux coudes restent proches du corps à la préparation.",
+      "Une main : appui fermé, épaule avant qui pointe la balle, bras libre qui part vers l'arrière pour équilibrer.",
+      "Impact devant, plus tôt qu'en coup droit, à hauteur de taille idéalement.",
+      "Le buste reste de profil jusqu'à l'impact, puis s'ouvre dans l'accompagnement.",
+      "Finition haute et longue vers la cible.",
+    ],
+    erreurs: [
+      "Épaules qui s'ouvrent trop tôt (ouverture précoce) → balle qui part à gauche/droite.",
+      "Impact trop près du corps, coudes pliés à la frappe.",
+      "Buste qui recule au lieu d'avancer, poids sur la jambe arrière.",
+    ],
+  },
+  {
+    id: 'service',
+    titre: 'Service',
+    resume: "Le coup le plus technique : rythme, lancer, position armée, rotation, extension.",
+    points: [
+      "Lancer de balle constant : bras tendu, balle relâchée à hauteur maximale, légèrement devant et à droite (droitier).",
+      "Position armée (trophy position) : coude à hauteur d'épaule, raquette pointée vers le haut, épaule avant plus haute.",
+      "Flexion des genoux marquée puis extension explosive vers le haut, pas vers l'avant seulement.",
+      "Pronation de l'avant-bras à l'impact : c'est ce qui donne la vitesse et l'effet, pas la force du poignet.",
+      "Impact bras tendu, le plus haut possible, corps aligné et légèrement en avant.",
+      "Retombée à l'intérieur du court sur la jambe avant, jambe arrière qui contrebalance.",
+    ],
+    erreurs: [
+      "Lancer irrégulier ou trop bas → tout le reste s'effondre.",
+      "Pas de flexion de genoux → pas d'énergie ascendante.",
+      "Impact bras plié ou trop en arrière de la tête.",
+      "Buste qui s'affaisse (« banane ») → douleurs lombaires et perte de puissance.",
+    ],
+  },
+  {
+    id: 'volee',
+    titre: 'Volée',
+    resume: "Court, ferme, devant soi : on bloque, on ne swingue pas.",
+    points: [
+      "Prise continentale, raquette haute devant le corps, tête de raquette au-dessus du poignet.",
+      "Préparation minimale : épaules qui tournent, pas de boucle de bras.",
+      "Pas croisé vers la balle, impact devant et sur le côté, bras ferme.",
+      "Geste court, légèrement de haut en bas, pour donner un peu de coupe et du contrôle.",
+      "Poids qui avance à travers la balle, on finit en équilibre vers le filet.",
+    ],
+    erreurs: [
+      "Trop d'armé → balle longue ou en retard.",
+      "Poignet mou à l'impact.",
+      "Rester à plat sur les talons au lieu d'avancer.",
+    ],
+  },
+  {
+    id: 'jeu-de-jambes',
+    titre: 'Jeu de jambes et équilibre',
+    resume: "Le meilleur geste sur de mauvais appuis reste un mauvais coup.",
+    points: [
+      "Split-step à chaque frappe adverse : petit rebond, atterrissage sur l'avant des pieds au moment du contact adverse.",
+      "Grands pas pour couvrir la distance, petits pas d'ajustement en fin de course.",
+      "Centre de gravité bas, genoux fléchis, buste droit — la tête reste stable pendant la frappe.",
+      "Récupération immédiate vers la position d'attente après chaque coup.",
+    ],
+    erreurs: [
+      "Pas de split-step → départ en retard sur chaque balle.",
+      "Tête qui bouge à l'impact.",
+      "Rester planté après la frappe pour admirer son coup.",
+    ],
+  },
+];
+
+const RESSOURCES = [
+  { titre: 'ITF Academy — ressources techniques et pédagogiques', url: 'https://www.itf-academy.com/' },
+  { titre: 'Fédération Française de Tennis — enseignement', url: 'https://www.fft.fr/' },
+  { titre: 'USTA — Player Development, fiches techniques', url: 'https://www.usta.com/en/home/coach-organize/tennis-teaching-professionals.html' },
+  { titre: 'Tennis Australia — Coaching resources', url: 'https://www.tennis.com.au/coaches' },
+];
+
+/** Repères chiffrés utilisés par le moteur de règles (valeurs indicatives, joueur amateur → confirmé). */
+const SEUILS = {
+  // Flexion du genou la plus marquée pendant la préparation (angle en degrés, 180 = jambe tendue)
+  flexionGenou:   { ideal: [130, 160], acceptable: [120, 168] },
+  // Ratio largeur d'épaules min/max pendant le coup : plus c'est bas, plus la rotation est marquée
+  rotationEpaules:{ ideal: [0, 0.72],  acceptable: [0, 0.85] },
+  // Angle du coude à l'impact (fond de court)
+  coudeImpact:    { ideal: [140, 172], acceptable: [125, 178] },
+  // Hauteur d'impact relative : 0 = hanche, 1 = épaule (fond de court)
+  hauteurImpact:  { ideal: [0.25, 0.95], acceptable: [0.05, 1.2] },
+  // Déplacement latéral du bassin pendant la frappe, en largeurs d'épaules
+  stabiliteBassin:{ ideal: [0, 0.35], acceptable: [0, 0.6] },
+  // Déplacement de la tête pendant la frappe, en largeurs d'épaules
+  stabiliteTete:  { ideal: [0, 0.28], acceptable: [0, 0.5] },
+  // Amplitude d'accompagnement après l'impact, en largeurs d'épaules
+  accompagnement: { ideal: [1.1, 4], acceptable: [0.75, 5] },
+  // Service : angle du coude à l'impact
+  coudeService:   { ideal: [160, 180], acceptable: [148, 180] },
+  // Service : flexion des genoux avant l'extension
+  flexionService: { ideal: [120, 150], acceptable: [110, 162] },
+};
+
+/* ===== js/pose.js ===== */
+/**
+ * Détection de posture image par image, dans le navigateur (MediaPipe Tasks Vision).
+ * Aucune vidéo ne quitte l'appareil.
+ */
+
+const VERSION = '0.10.14';
+
+/** Sources possibles pour la bibliothèque, essayées dans l'ordre. */
+const SOURCES = [
+  { module: `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}`,
+    wasm:   `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/wasm` },
+  { module: `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/vision_bundle.mjs`,
+    wasm:   `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VERSION}/wasm` },
+  { module: `https://unpkg.com/@mediapipe/tasks-vision@${VERSION}/vision_bundle.mjs`,
+    wasm:   `https://unpkg.com/@mediapipe/tasks-vision@${VERSION}/wasm` },
+];
+
+const MODELE = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task';
+
+/** Indices des points MediaPipe Pose utilisés ici. */
+const P = {
+  nez: 0,
+  epauleG: 11, epauleD: 12,
+  coudeG: 13, coudeD: 14,
+  poignetG: 15, poignetD: 16,
+  hancheG: 23, hancheD: 24,
+  genouG: 25, genouD: 26,
+  chevilleG: 27, chevilleD: 28,
+  piedG: 31, piedD: 32,
+};
+
+/** Segments dessinés pour le squelette. */
+const SQUELETTE = [
+  [11, 12], [11, 23], [12, 24], [23, 24],
+  [11, 13], [13, 15], [12, 14], [14, 16],
+  [23, 25], [25, 27], [24, 26], [26, 28],
+  [27, 31], [28, 32],
+];
+
+let detecteur = null;
+
+/** Charge le modèle une seule fois, en essayant les sources l'une après l'autre. */
+async function chargerDetecteur(onStatut = () => {}) {
+  if (detecteur) return detecteur;
+  onStatut('Chargement du modèle de détection de posture…');
+
+  const echecs = [];
+  for (const source of SOURCES) {
+    try {
+      const { PoseLandmarker, FilesetResolver } = await import(/* @vite-ignore */ source.module);
+      const vision = await FilesetResolver.forVisionTasks(source.wasm);
+      detecteur = await PoseLandmarker.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: MODELE, delegate: 'GPU' },
+        runningMode: 'IMAGE',
+        numPoses: 1,
+        minPoseDetectionConfidence: 0.5,
+        minPosePresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
+      });
+      return detecteur;
+    } catch (err) {
+      echecs.push(`${source.module} → ${err?.message || err}`);
+    }
+  }
+
+  throw new Error(
+    "Impossible de charger le modèle de détection de posture. Une connexion internet est nécessaire " +
+    "au premier chargement (le navigateur le met ensuite en cache), et certains réseaux d'entreprise " +
+    "ou bloqueurs empêchent l'accès aux CDN. Détail :\n" + echecs.join('\n')
+  );
+}
+
+function chercher(video, t) {
+  return new Promise((resolve, reject) => {
+    const ok = () => { nettoyer(); resolve(); };
+    const ko = () => { nettoyer(); reject(new Error('Lecture vidéo impossible à ' + t.toFixed(2) + ' s')); };
+    const nettoyer = () => {
+      video.removeEventListener('seeked', ok);
+      video.removeEventListener('error', ko);
+    };
+    video.addEventListener('seeked', ok, { once: true });
+    video.addEventListener('error', ko, { once: true });
+    video.currentTime = Math.min(t, Math.max(0, video.duration - 0.02));
+  });
+}
+
+/**
+ * Échantillonne la vidéo et renvoie, pour chaque image : temps, points détectés et vignette JPEG.
+ * @returns {Promise<{frames: Array, largeur: number, hauteur: number, tauxDetection: number}>}
+ */
+async function echantillonner(video, { debut = 0, duree = 30, fps = 12, onProgres = () => {} } = {}) {
+  const det = await chargerDetecteur((m) => onProgres(0, m));
+
+  const fin = Math.min(video.duration, debut + duree);
+  const pas = 1 / fps;
+  const total = Math.max(1, Math.floor((fin - debut) / pas));
+
+  const largeurVignette = 480;
+  const ratio = video.videoHeight / video.videoWidth || 0.5625;
+  const cv = document.createElement('canvas');
+  cv.width = largeurVignette;
+  cv.height = Math.round(largeurVignette * ratio);
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+
+  const frames = [];
+  let detectees = 0;
+
+  for (let i = 0; i < total; i++) {
+    const t = debut + i * pas;
+    await chercher(video, t);
+    ctx.drawImage(video, 0, 0, cv.width, cv.height);
+
+    let pts = null;
+    try {
+      const res = det.detect(video);
+      if (res?.landmarks?.length) pts = res.landmarks[0];
+    } catch {
+      pts = null;
+    }
+    if (pts) detectees++;
+
+    // En local (fichier ouvert directement), certains navigateurs interdisent de relire
+    // les pixels d'une vidéo : on continue sans vignette plutôt que d'interrompre l'analyse.
+    let vignette = null;
+    try {
+      vignette = cv.toDataURL('image/jpeg', 0.6);
+    } catch {
+      vignette = null;
+    }
+
+    frames.push({ t, pts, vignette });
+
+    if (i % 3 === 0 || i === total - 1) {
+      onProgres((i + 1) / total, `Analyse des images : ${i + 1} / ${total}`);
+      await new Promise((r) => setTimeout(r, 0)); // laisse respirer l'UI
+    }
+  }
+
+  return {
+    frames,
+    largeur: video.videoWidth,
+    hauteur: video.videoHeight,
+    tauxDetection: frames.length ? detectees / frames.length : 0,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Géométrie                                                           */
+/* ------------------------------------------------------------------ */
+
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const milieu = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+/** Angle en degrés au sommet b, formé par a-b-c. */
+function angle(a, b, c) {
+  const v1 = { x: a.x - b.x, y: a.y - b.y };
+  const v2 = { x: c.x - b.x, y: c.y - b.y };
+  const n1 = Math.hypot(v1.x, v1.y), n2 = Math.hypot(v2.x, v2.y);
+  if (!n1 || !n2) return NaN;
+  const cos = Math.min(1, Math.max(-1, (v1.x * v2.x + v1.y * v2.y) / (n1 * n2)));
+  return (Math.acos(cos) * 180) / Math.PI;
+}
+
+/** Inclinaison du buste par rapport à la verticale, en degrés (0 = droit). */
+function inclinaisonBuste(epaules, hanches) {
+  const dx = epaules.x - hanches.x;
+  const dy = hanches.y - epaules.y; // y descend dans l'image
+  if (!dy) return 90;
+  return Math.abs((Math.atan2(dx, dy) * 180) / Math.PI);
+}
+
+/** Lissage par moyenne glissante, en ignorant les NaN. */
+function lisser(serie, fenetre = 3) {
+  const n = serie.length;
+  const out = new Array(n);
+  const demi = Math.floor(fenetre / 2);
+  for (let i = 0; i < n; i++) {
+    let somme = 0, compte = 0;
+    for (let j = Math.max(0, i - demi); j <= Math.min(n - 1, i + demi); j++) {
+      if (Number.isFinite(serie[j])) { somme += serie[j]; compte++; }
+    }
+    out[i] = compte ? somme / compte : NaN;
+  }
+  return out;
+}
+
+/* ===== js/analyse.js ===== */
+/**
+ * Moteur d'analyse : transforme les points de posture en mesures biomécaniques,
+ * détecte les frappes, puis applique un référentiel de coaching.
+ */
+
+
+
+/* ------------------------------------------------------------------ */
+/* Utilitaires                                                         */
+/* ------------------------------------------------------------------ */
+
+const finis = (arr) => arr.filter(Number.isFinite);
+
+function mediane(arr) {
+  const v = finis(arr).sort((a, b) => a - b);
+  if (!v.length) return NaN;
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+
+const borne = (v, min, max) => Math.min(max, Math.max(min, v));
+
+/** Compare une valeur à un seuil : 'bon' | 'moyen' | 'mauvais', + sens de l'écart. */
+function evaluer(valeur, seuil) {
+  if (!Number.isFinite(valeur)) return { niveau: 'inconnu', sens: 0 };
+  const [i0, i1] = seuil.ideal;
+  const [a0, a1] = seuil.acceptable;
+  if (valeur >= i0 && valeur <= i1) return { niveau: 'bon', sens: 0 };
+  const sens = valeur < i0 ? -1 : 1;
+  if (valeur >= a0 && valeur <= a1) return { niveau: 'moyen', sens };
+  return { niveau: 'mauvais', sens };
+}
+
+/* ------------------------------------------------------------------ */
+/* 1. Séries temporelles                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Construit les séries image par image. Les x sont remis à l'échelle par le rapport
+ * largeur/hauteur pour que les distances restent comparables dans les deux axes.
+ */
+function construireSeries(frames, largeur, hauteur) {
+  const aspect = largeur && hauteur ? largeur / hauteur : 16 / 9;
+
+  return frames.map((f) => {
+    if (!f.pts) return { t: f.t, ok: false };
+    const p = (i) => ({ x: f.pts[i].x * aspect, y: f.pts[i].y, v: f.pts[i].visibility ?? 1 });
+
+    const epauleG = p(P.epauleG), epauleD = p(P.epauleD);
+    const hancheG = p(P.hancheG), hancheD = p(P.hancheD);
+    const epaules = milieu(epauleG, epauleD);
+    const hanches = milieu(hancheG, hancheD);
+    const sw = dist(epauleG, epauleD);
+
+    if (!(sw > 0.01)) return { t: f.t, ok: false };
+
+    return {
+      t: f.t,
+      ok: true,
+      sw,
+      nez: p(P.nez),
+      epauleG, epauleD, epaules,
+      hancheG, hancheD, hanches,
+      poignetG: p(P.poignetG), poignetD: p(P.poignetD),
+      coudeG: p(P.coudeG), coudeD: p(P.coudeD),
+      chevilleG: p(P.chevilleG), chevilleD: p(P.chevilleD),
+      angleCoudeG: angle(p(P.epauleG), p(P.coudeG), p(P.poignetG)),
+      angleCoudeD: angle(p(P.epauleD), p(P.coudeD), p(P.poignetD)),
+      angleGenouG: angle(hancheG, p(P.genouG), p(P.chevilleG)),
+      angleGenouD: angle(hancheD, p(P.genouD), p(P.chevilleD)),
+      buste: inclinaisonBuste(epaules, hanches),
+    };
+  });
+}
+
+/** Détermine la main dominante : celle dont le poignet parcourt le plus de chemin. */
+function detecterMain(series, force = 'auto') {
+  if (force === 'right') return 'D';
+  if (force === 'left') return 'G';
+  let cheminG = 0, cheminD = 0;
+  for (let i = 1; i < series.length; i++) {
+    const a = series[i - 1], b = series[i];
+    if (!a.ok || !b.ok) continue;
+    cheminG += dist(a.poignetG, b.poignetG) / b.sw;
+    cheminD += dist(a.poignetD, b.poignetD) / b.sw;
+  }
+  return cheminD >= cheminG ? 'D' : 'G';
+}
+
+/** Vitesse du poignet dominant, en largeurs d'épaules par seconde. */
+function vitessePoignet(series, main) {
+  const cle = main === 'D' ? 'poignetD' : 'poignetG';
+  const v = new Array(series.length).fill(NaN);
+  for (let i = 1; i < series.length; i++) {
+    const a = series[i - 1], b = series[i];
+    if (!a.ok || !b.ok) continue;
+    const dt = b.t - a.t;
+    if (dt <= 0) continue;
+    v[i] = dist(a[cle], b[cle]) / b.sw / dt;
+  }
+  return lisser(v, 3);
+}
+
+/* ------------------------------------------------------------------ */
+/* 2. Détection des frappes                                            */
+/* ------------------------------------------------------------------ */
+
+function detecterFrappes(
+  series, vitesse,
+  { ecartMin = 0.55, fenetreDomination = 0.8, ratioDomination = 1.7 } = {},
+) {
+  const valides = finis(vitesse);
+  if (valides.length < 5) return [];
+  const max = Math.max(...valides);
+  const seuil = Math.max(max * 0.45, 2.2); // largeurs d'épaules / s
+
+  const pics = [];
+  for (let i = 1; i < vitesse.length - 1; i++) {
+    const v = vitesse[i];
+    if (!Number.isFinite(v) || v < seuil) continue;
+    if (v >= (vitesse[i - 1] ?? 0) && v > (vitesse[i + 1] ?? 0)) pics.push({ i, v, t: series[i].t });
+  }
+
+  // Un armé ou un replacement produit lui aussi un pic, mais il est toujours suivi de près
+  // par la frappe, bien plus rapide. On écarte donc les pics dominés par un voisin proche.
+  const retenus = pics.filter((p) => !pics.some(
+    (q) => q !== p && Math.abs(q.t - p.t) <= fenetreDomination && q.v > p.v * ratioDomination
+  ));
+
+  // Puis on garde les plus forts en respectant un écart minimal entre deux frappes.
+  retenus.sort((a, b) => b.v - a.v);
+  const gardes = [];
+  for (const pic of retenus) {
+    if (gardes.every((g) => Math.abs(g.t - pic.t) >= ecartMin)) gardes.push(pic);
+  }
+  return gardes.sort((a, b) => a.t - b.t);
+}
+
+/* ------------------------------------------------------------------ */
+/* 3. Mesures par frappe                                               */
+/* ------------------------------------------------------------------ */
+
+const fenetre = (series, t0, t1) =>
+  series.filter((s) => s.ok && s.t >= t0 && s.t <= t1);
+
+function mesurerFrappe(series, pic, main) {
+  const contact = series[pic.i];
+  if (!contact?.ok) return null;
+
+  const clePoignet = main === 'D' ? 'poignetD' : 'poignetG';
+  const cleCoude = main === 'D' ? 'angleCoudeD' : 'angleCoudeG';
+  const cleEpaule = main === 'D' ? 'epauleD' : 'epauleG';
+  const cleAutrePoignet = main === 'D' ? 'poignetG' : 'poignetD';
+
+  const prep = fenetre(series, pic.t - 0.70, pic.t - 0.08);
+  const suivi = fenetre(series, pic.t + 0.04, pic.t + 0.60);
+  const global = fenetre(series, pic.t - 0.7, pic.t + 0.7);
+  const avant = fenetre(series, pic.t - 1.1, pic.t - 0.45);
+  if (!prep.length || !global.length) return null;
+
+  const sw = mediane(global.map((s) => s.sw));
+  const poignet = contact[clePoignet];
+
+  // Hauteur d'impact : 0 = hanche, 1 = épaule (l'axe y descend dans l'image)
+  const ecartTronc = contact.hanches.y - contact.epaules.y;
+  const hauteurImpact = ecartTronc > 0 ? (contact.hanches.y - poignet.y) / ecartTronc : NaN;
+
+  // Rotation des épaules : la ligne d'épaules « rétrécit » quand le buste se met de profil
+  const swMax = Math.max(...global.map((s) => s.sw));
+  const rotationEpaules = swMax > 0 ? Math.min(...prep.map((s) => s.sw)) / swMax : NaN;
+
+  // Flexion de genou la plus marquée pendant l'armé
+  const flexionGenou = Math.min(
+    ...prep.map((s) => Math.min(s.angleGenouG || 999, s.angleGenouD || 999))
+  );
+
+  // Stabilité : déplacement latéral du bassin et de la tête autour de l'impact
+  const proche = fenetre(series, pic.t - 0.25, pic.t + 0.25);
+  const xsBassin = proche.map((s) => s.hanches.x);
+  const deplacementBassin = xsBassin.length
+    ? (Math.max(...xsBassin) - Math.min(...xsBassin)) / sw : NaN;
+  const deplacementTete = proche.length
+    ? Math.max(...proche.map((s) => dist(s.nez, contact.nez))) / sw : NaN;
+
+  // Accompagnement : longueur du trajet du poignet après l'impact
+  let accompagnement = 0;
+  for (let i = 1; i < suivi.length; i++) {
+    accompagnement += dist(suivi[i - 1][clePoignet], suivi[i][clePoignet]) / sw;
+  }
+  const finGeste = suivi.at(-1);
+  const hauteurFin = finGeste && ecartTronc > 0
+    ? (finGeste.hanches.y - finGeste[clePoignet].y) / ecartTronc : NaN;
+
+  // Armé : longueur du trajet du poignet avant l'impact
+  let amplitudePrep = 0;
+  for (let i = 1; i < prep.length; i++) {
+    amplitudePrep += dist(prep[i - 1][clePoignet], prep[i][clePoignet]) / sw;
+  }
+
+  // Bras libre écarté du corps pendant l'armé (équilibre / repérage de balle)
+  const brasLibre = mediane(prep.map((s) => dist(s[cleAutrePoignet], s.epaules) / s.sw));
+
+  // Hauteur maximale du bras non dominant pendant l'armé (bras de lancer au service)
+  const hauteurBrasLibre = ecartTronc > 0
+    ? Math.max(...prep.map((s) => (s.hanches.y - s[cleAutrePoignet].y) / ecartTronc))
+    : NaN;
+
+  // Oscillation verticale du bassin avant la frappe → indice de split-step
+  const oscillation = avant.length > 2
+    ? (Math.max(...avant.map((s) => s.hanches.y)) - Math.min(...avant.map((s) => s.hanches.y))) / sw
+    : NaN;
+
+  // Type de coup
+  const auDessusTete = poignet.y < contact.nez.y;
+  let type;
+  if (auDessusTete && hauteurImpact > 1.6) {
+    type = 'service';
+  } else {
+    const coteBras = Math.sign(contact[cleEpaule].x - contact.hanches.x);
+    const cotePoignet = Math.sign(poignet.x - contact.hanches.x);
+    const croise = coteBras !== 0 && cotePoignet !== 0 && coteBras !== cotePoignet;
+    if (amplitudePrep < 0.85 && hauteurImpact > 0.1 && hauteurImpact < 1.4) {
+      type = croise ? 'volee-revers' : 'volee-coup-droit';
+    } else {
+      type = croise ? 'revers' : 'coup-droit';
+    }
+  }
+
+  return {
+    t: pic.t,
+    indice: pic.i,
+    type,
+    vitesse: pic.v,
+    hauteurImpact,
+    coudeImpact: contact[cleCoude],
+    rotationEpaules,
+    flexionGenou: Number.isFinite(flexionGenou) && flexionGenou < 900 ? flexionGenou : NaN,
+    deplacementBassin,
+    deplacementTete,
+    accompagnement,
+    hauteurFin,
+    amplitudePrep,
+    brasLibre,
+    hauteurBrasLibre,
+    oscillation,
+    busteImpact: contact.buste,
+  };
+}
+
+const LIBELLES_COUP = {
+  'coup-droit': 'Coup droit',
+  'revers': 'Revers',
+  'service': 'Service',
+  'volee-coup-droit': 'Volée de coup droit',
+  'volee-revers': 'Volée de revers',
+};
+
+/* ------------------------------------------------------------------ */
+/* 4. Règles de coaching                                               */
+/* ------------------------------------------------------------------ */
+
+/** Génère les constats pour un groupe de frappes du même type. */
+function reglesGroupe(type, frappes) {
+  const c = [];
+  const n = frappes.length;
+  const libelle = LIBELLES_COUP[type] || type;
+  const med = (cle) => mediane(frappes.map((f) => f[cle]));
+  const est = (cle, seuil) => evaluer(med(cle), seuil);
+
+  const service = type === 'service';
+  const volee = type.startsWith('volee');
+
+  const ajouter = (o) => c.push({ coup: libelle, occurrences: n, ...o });
+
+  /* --- Bras de lancer (service) --- */
+  if (service) {
+    const hbl = med('hauteurBrasLibre');
+    if (Number.isFinite(hbl)) {
+      if (hbl >= 1.15) {
+        ajouter({
+          niveau: 'bon', titre: 'Bras de lancer bien tendu',
+          detail: "Ton bras non dominant monte haut et reste en l'air pendant l'armé : c'est ce qui garde le buste ouvert et le lancer régulier.",
+        });
+      } else {
+        ajouter({
+          niveau: hbl < 0.85 ? 'priorite' : 'corriger',
+          titre: 'Bras de lancer qui retombe trop tôt',
+          detail: `Ton bras de lancer redescend avant la frappe (hauteur ${hbl.toFixed(2)}, l'épaule vaut 1). Le buste s'affaisse, le point d'impact baisse et le lancer devient irrégulier.`,
+          exo: "Lancers seuls, sans frapper : lance la balle et garde le bras tendu vers elle jusqu'à ce qu'elle redescende à hauteur de tête. 15 répétitions, puis 10 services complets avec la même sensation.",
+        });
+      }
+    }
+  }
+
+  /* --- Rotation du tronc (coups de fond uniquement) --- */
+  if (!volee && !service) {
+    const r = est('rotationEpaules', SEUILS.rotationEpaules);
+    const v = med('rotationEpaules');
+    if (r.niveau === 'bon') {
+      ajouter({
+        niveau: 'bon', titre: 'Bonne rotation du tronc à la préparation',
+        detail: `Tes épaules se mettent nettement de profil avant la frappe (indice ${v.toFixed(2)}, plus c'est bas mieux c'est). C'est la source principale de la vitesse de balle.`,
+      });
+    } else if (r.niveau !== 'inconnu') {
+      ajouter({
+        niveau: r.niveau === 'mauvais' ? 'priorite' : 'corriger',
+        titre: 'Rotation du tronc insuffisante',
+        detail: `Tu prépares surtout avec le bras : la ligne d'épaules reste presque de face à l'armé (indice ${v.toFixed(2)}). Tu perds la chaîne cinétique jambes → hanches → épaules, donc de la vitesse gratuite, et tu sollicites davantage l'épaule.`,
+        exo: "Frappes sans balle : main libre posée sur le cadre, tourne les épaules jusqu'à voir ton dos de l'autre côté du filet avant de lâcher le geste. 3 séries de 10, puis 10 balles au panier en gardant la même sensation.",
+      });
+    }
+  }
+
+  /* --- Flexion des jambes --- */
+  const seuilGenou = service ? SEUILS.flexionService : SEUILS.flexionGenou;
+  const g = est('flexionGenou', seuilGenou);
+  const vg = med('flexionGenou');
+  if (g.niveau === 'bon') {
+    ajouter({
+      niveau: 'bon', titre: 'Bon engagement des jambes',
+      detail: `Genou le plus fléchi à ${Math.round(vg)}° pendant l'armé : tu charges bien tes appuis avant de frapper.`,
+    });
+  } else if (g.sens > 0) {
+    ajouter({
+      niveau: service ? 'priorite' : 'corriger',
+      titre: 'Jambes trop tendues',
+      detail: `Ton genou ne descend qu'à ${Math.round(vg)}° (référence ${seuilGenou.ideal[0]}–${seuilGenou.ideal[1]}°). ${service ? "Sans flexion, il n'y a pas d'extension explosive : le service reste un geste de bras." : "Tu frappes debout : la puissance vient alors du bras seul et l'équilibre est fragile sur les balles basses."}`,
+      exo: service
+        ? "Services au ralenti en marquant 1 seconde d'arrêt en position armée genoux fléchis, puis extension. 2 séries de 8, puis à vitesse normale."
+        : "Échanges avec consigne « toucher le genou du sol du regard » : sur chaque frappe, fléchis jusqu'à sentir la cuisse travailler avant de pousser.",
+    });
+  } else if (g.sens < 0 && g.niveau === 'mauvais') {
+    ajouter({
+      niveau: 'corriger', titre: 'Flexion excessive / position trop basse',
+      detail: `Genou à ${Math.round(vg)}° : tu t'accroupis plus que nécessaire, ce qui coûte de l'énergie et ralentit la récupération entre deux balles.`,
+      exo: "Travail de position d'attente : fléchis juste assez pour sentir le poids sur l'avant des pieds, puis enchaîne 10 déplacements latéraux.",
+    });
+  }
+
+  /* --- Hauteur et distance d'impact --- */
+  if (!service) {
+    const h = est('hauteurImpact', SEUILS.hauteurImpact);
+    const vh = med('hauteurImpact');
+    if (h.niveau === 'bon') {
+      ajouter({
+        niveau: 'bon', titre: "Bonne hauteur d'impact",
+        detail: `Tu frappes entre la hanche et l'épaule (indice ${vh.toFixed(2)}) : c'est la zone où tu contrôles le mieux la balle.`,
+      });
+    } else if (h.sens < 0) {
+      ajouter({
+        niveau: 'corriger', titre: 'Impact trop bas',
+        detail: `La balle est frappée sous la hanche (indice ${vh.toFixed(2)}). Souvent le signe d'une prise de balle en retard ou d'un manque de flexion : tu subis le rebond au lieu de le prendre montant.`,
+        exo: "Prise de balle en montée : place-toi un mètre à l'intérieur de la ligne de fond et frappe la balle avant qu'elle ne redescende. 20 répétitions au panier.",
+      });
+    } else if (h.sens > 0) {
+      ajouter({
+        niveau: 'corriger', titre: 'Impact très haut',
+        detail: `Impact au-dessus de l'épaule (indice ${vh.toFixed(2)}). Sur balle haute c'est normal ponctuellement, mais si ça se répète, recule d'un pas ou travaille la prise de balle plus tôt.`,
+        exo: "Alterne : 5 balles prises en montée juste après le rebond, 5 balles reculées et prises à la descente. Sens la différence de contrôle.",
+      });
+    }
+  }
+
+  /* --- Bras à l'impact --- */
+  const seuilCoude = service ? SEUILS.coudeService : SEUILS.coudeImpact;
+  const co = est('coudeImpact', seuilCoude);
+  const vco = med('coudeImpact');
+  if (co.niveau === 'bon') {
+    ajouter({
+      niveau: 'bon', titre: service ? 'Bonne extension au service' : 'Bonne distance à la balle',
+      detail: `Coude à ${Math.round(vco)}° à l'impact : ${service ? "tu frappes bras tendu, au point le plus haut." : "le bras est allongé sans être verrouillé, tu frappes à bonne distance du corps."}`,
+    });
+  } else if (co.sens < 0) {
+    ajouter({
+      niveau: co.niveau === 'mauvais' ? 'priorite' : 'corriger',
+      titre: service ? 'Service frappé bras plié' : 'Impact trop près du corps',
+      detail: `Coude à ${Math.round(vco)}° à l'impact (référence ${seuilCoude.ideal[0]}–${seuilCoude.ideal[1]}°). ${service ? "Tu perds beaucoup de hauteur d'impact, donc d'angle et de marge au-dessus du filet." : "Tu es coincé : la balle arrive dans les pieds et le geste se raccourcit."}`,
+      exo: service
+        ? "Service « pièce sur la raquette » : lance et frappe en cherchant à toucher le point le plus haut possible, sans forcer. Filme-toi de profil pour vérifier le bras tendu."
+        : "Consigne d'espacement : sur 15 balles, oblige-toi à faire un dernier petit pas d'ajustement pour frapper bras long, quitte à jouer plus lentement.",
+    });
+  } else if (co.sens > 0 && !service) {
+    ajouter({
+      niveau: 'corriger', titre: 'Bras trop verrouillé',
+      detail: `Coude quasiment bloqué à ${Math.round(vco)}° : le geste devient rigide, la tête de raquette accélère moins bien.`,
+      exo: "Travail de relâchement : frappe 10 balles à 60 % en cherchant à sentir la raquette « tomber » puis fouetter, coude légèrement souple.",
+    });
+  }
+
+  /* --- Accompagnement --- */
+  if (!volee) {
+    const a = est('accompagnement', SEUILS.accompagnement);
+    const va = med('accompagnement');
+    if (a.niveau === 'bon') {
+      ajouter({
+        niveau: 'bon', titre: 'Accompagnement complet',
+        detail: `Ton geste continue nettement après l'impact (amplitude ${va.toFixed(1)} largeurs d'épaules) : la raquette accélère à travers la balle.`,
+      });
+    } else if (a.sens < 0) {
+      ajouter({
+        niveau: 'priorite', titre: 'Geste coupé après la frappe',
+        detail: `L'accompagnement s'arrête très vite (${va.toFixed(1)} largeurs d'épaules). Quand on freine à l'impact, on décélère en réalité *avant* l'impact : perte de vitesse et de longueur de balle.`,
+        exo: "Finis systématiquement au-dessus de l'épaule opposée et garde la position 1 seconde. 20 balles avec ce seul objectif, sans regarder où va la balle.",
+      });
+    }
+  } else {
+    const va = med('accompagnement');
+    if (Number.isFinite(va) && va > 2.2) {
+      ajouter({
+        niveau: 'corriger', titre: 'Volée trop swinguée',
+        detail: `Ton geste de volée est long (${va.toFixed(1)} largeurs d'épaules). À la volée on bloque : geste court, poignet ferme, c'est l'avancée du corps qui donne la profondeur.`,
+        exo: "Volées contre un mur ou en demi-court, raquette qui ne dépasse jamais la ligne des épaules. 30 répétitions.",
+      });
+    }
+  }
+
+  /* --- Stabilité --- */
+  const sb = est('deplacementBassin', SEUILS.stabiliteBassin);
+  const st = est('deplacementTete', SEUILS.stabiliteTete);
+  if (sb.niveau === 'bon' && st.niveau === 'bon') {
+    ajouter({
+      niveau: 'bon', titre: 'Bon équilibre à la frappe',
+      detail: 'Tête et bassin restent stables au moment du contact : ta base est solide, le geste est reproductible.',
+    });
+  } else {
+    if (sb.sens > 0) {
+      ajouter({
+        niveau: sb.niveau === 'mauvais' ? 'priorite' : 'corriger',
+        titre: 'Bassin qui dérive à la frappe',
+        detail: `Ton bassin se déplace de ${med('deplacementBassin').toFixed(2)} largeur d'épaules autour de l'impact. Tu frappes en déséquilibre : la régularité en souffre plus que la puissance.`,
+        exo: "Frappes en fente : pose l'appui avant et interdis-toi de le décoller avant la fin du geste. 15 balles de chaque côté.",
+      });
+    }
+    if (st.sens > 0) {
+      ajouter({
+        niveau: st.niveau === 'mauvais' ? 'priorite' : 'corriger',
+        titre: 'Tête qui bouge à l\'impact',
+        detail: `Ta tête se déplace de ${med('deplacementTete').toFixed(2)} largeur d'épaules autour du contact. C'est la cause n°1 des fautes de centrage.`,
+        exo: "Consigne « regarder le point d'impact » : garde le regard sur la zone de contact jusqu'à la fin de l'accompagnement, ne suis pas la balle des yeux. 20 balles.",
+      });
+    }
+  }
+
+  /* --- Split-step --- */
+  const osc = med('oscillation');
+  if (Number.isFinite(osc) && !service) {
+    if (osc < 0.05) {
+      ajouter({
+        niveau: 'corriger', titre: 'Pas de split-step visible',
+        detail: `Le bassin ne monte quasiment pas avant la frappe (${osc.toFixed(3)}). Sans ce petit rebond au moment où l'adversaire frappe, tu pars systématiquement en retard sur la balle.`,
+        exo: "Exercice au panier : le coach annonce « hop » à chaque lancer, tu sautes légèrement et atterris sur l'avant des pieds juste avant de partir. 3 séries de 10.",
+      });
+    } else if (osc > 0.09) {
+      ajouter({
+        niveau: 'bon', titre: 'Reprise d\'appuis présente',
+        detail: "On voit un rebond du bassin avant les frappes : ton split-step est là, tu démarres avec les appuis dynamiques.",
+      });
+    }
+  }
+
+  /* --- Bras libre (coups de fond) --- */
+  if (!service && !volee) {
+    const bl = med('brasLibre');
+    if (Number.isFinite(bl) && bl < 0.55) {
+      ajouter({
+        niveau: 'corriger', titre: 'Bras libre collé au corps',
+        detail: `Ton bras non dominant reste près du buste pendant l'armé (${bl.toFixed(2)}). Il sert pourtant à mesurer la distance à la balle et à équilibrer la rotation.`,
+        exo: "Coup droit : pointe la balle du doigt avec la main libre pendant toute la préparation, puis ramène-la contre le buste au moment de la frappe. 20 répétitions.",
+      });
+    }
+  }
+
+  return c;
+}
+
+/** Règles globales, indépendantes du type de coup. */
+function reglesGlobales(frappes, duree, tauxDetection) {
+  const c = [];
+  if (tauxDetection < 0.7) {
+    c.push({
+      niveau: 'corriger', coup: 'Qualité vidéo',
+      titre: 'Détection partielle du joueur',
+      detail: `Le joueur n'a été détecté que sur ${Math.round(tauxDetection * 100)} % des images. Les mesures ci-dessous sont donc à prendre avec prudence.`,
+      exo: 'Refilme en cadrant le joueur en entier, caméra fixe, bon éclairage, et un seul joueur dans le champ.',
+    });
+  }
+  if (frappes.length && duree > 0) {
+    const cadence = (frappes.length / duree) * 60;
+    c.push({
+      niveau: 'info', coup: 'Général',
+      titre: `${frappes.length} frappe${frappes.length > 1 ? 's' : ''} détectée${frappes.length > 1 ? 's' : ''}`,
+      detail: `Soit environ ${Math.round(cadence)} frappes par minute sur la séquence analysée.`,
+    });
+  }
+  return c;
+}
+
+/* ------------------------------------------------------------------ */
+/* 5. Point d'entrée                                                   */
+/* ------------------------------------------------------------------ */
+
+function analyser({ frames, largeur, hauteur, tauxDetection }, { main = 'auto' } = {}) {
+  const series = construireSeries(frames, largeur, hauteur);
+  const mainDominante = detecterMain(series, main);
+  const vitesse = vitessePoignet(series, mainDominante);
+  const pics = detecterFrappes(series, vitesse);
+
+  const frappes = pics
+    .map((pic) => mesurerFrappe(series, pic, mainDominante))
+    .filter(Boolean);
+
+  const duree = series.length ? series.at(-1).t - series[0].t : 0;
+
+  // Groupement par type, en fusionnant les volées avec leur coup de fond si trop peu nombreuses
+  const groupes = new Map();
+  for (const f of frappes) {
+    if (!groupes.has(f.type)) groupes.set(f.type, []);
+    groupes.get(f.type).push(f);
+  }
+
+  let constats = [];
+  for (const [type, liste] of groupes) {
+    if (liste.length === 0) continue;
+    constats = constats.concat(reglesGroupe(type, liste));
+  }
+  constats = constats.concat(reglesGlobales(frappes, duree, tauxDetection));
+
+  // Score : on part de 100 et on retire selon la gravité des constats
+  const penalites = { priorite: 15, corriger: 8, bon: 0, info: 0 };
+  const brut = constats.reduce((s, c) => s - (penalites[c.niveau] || 0), 100);
+  const bonus = Math.min(10, constats.filter((c) => c.niveau === 'bon').length * 2);
+  let score = borne(brut + bonus, 25, 100);
+  // Un point fort ne doit jamais effacer un défaut : on plafonne selon la gravité restante.
+  if (constats.some((c) => c.niveau === 'priorite')) score = Math.min(score, 82);
+  else if (constats.some((c) => c.niveau === 'corriger')) score = Math.min(score, 92);
+  score = frappes.length ? Math.round(score) : null;
+
+  const ordre = { priorite: 0, corriger: 1, bon: 2, info: 3 };
+  constats.sort((a, b) => ordre[a.niveau] - ordre[b.niveau]);
+
+  return {
+    series,
+    vitesse,
+    frappes,
+    constats,
+    score,
+    mainDominante,
+    duree,
+    tauxDetection,
+    groupes: [...groupes.entries()].map(([type, liste]) => ({
+      type,
+      libelle: LIBELLES_COUP[type] || type,
+      nombre: liste.length,
+      medianes: {
+        hauteurImpact: mediane(liste.map((f) => f.hauteurImpact)),
+        coudeImpact: mediane(liste.map((f) => f.coudeImpact)),
+        rotationEpaules: mediane(liste.map((f) => f.rotationEpaules)),
+        flexionGenou: mediane(liste.map((f) => f.flexionGenou)),
+        accompagnement: mediane(liste.map((f) => f.accompagnement)),
+        deplacementTete: mediane(liste.map((f) => f.deplacementTete)),
+        deplacementBassin: mediane(liste.map((f) => f.deplacementBassin)),
+        vitesse: mediane(liste.map((f) => f.vitesse)),
+      },
+    })),
+  };
+}
+
+/* ===== js/ai.js ===== */
+/**
+ * Analyse approfondie facultative via l'API Claude (Anthropic), appelée directement
+ * depuis le navigateur avec la clé de l'utilisateur (BYOK).
+ */
+
+const URL_API = 'https://api.anthropic.com/v1/messages';
+const MODELE_IA = 'claude-opus-5';
+
+const SYSTEME = `Tu es entraîneur de tennis diplômé (niveau DE / ITF Level 2). Tu analyses des images clés
+extraites d'une vidéo d'un joueur amateur, accompagnées de mesures biomécaniques calculées automatiquement
+par détection de posture (elles sont indicatives et peuvent contenir des erreurs de détection : si une image
+contredit une mesure, fais confiance à l'image et dis-le).
+
+Réponds en français, en Markdown, avec exactement ces sections :
+
+## Ce qui fonctionne
+2 à 4 points précis, ancrés dans ce que tu vois réellement sur les images.
+
+## À corriger en priorité
+Les 2 ou 3 défauts qui coûtent le plus, classés du plus important au moins important. Pour chacun :
+le constat, la conséquence concrète sur la balle ou sur le corps, et la correction technique.
+
+## Exercices pour la semaine
+3 exercices concrets et réalisables seul ou avec un partenaire : nom, déroulé, nombre de répétitions,
+et le point de contrôle qui indique que c'est réussi.
+
+## À vérifier sur une prochaine vidéo
+Ce que l'angle de caméra actuel ne permet pas de juger (prise de raquette, effet, trajectoire de balle...).
+
+Règles : sois direct et concret, pas de flatterie ni de généralités. Ne prétends pas voir ce que les images
+ne montrent pas. Si la qualité de détection est faible, dis-le d'entrée.`;
+
+function nettoyerBase64(dataURL) {
+  const i = dataURL.indexOf(',');
+  return i >= 0 ? dataURL.slice(i + 1) : dataURL;
+}
+
+function construirePrompt({ analyse, niveau, objectif, avecWeb, nbImages }) {
+  const niveaux = {
+    debutant: 'débutant (moins de 2 ans de pratique)',
+    intermediaire: 'intermédiaire, joueur de club',
+    avance: 'avancé, joueur de compétition',
+  };
+
+  const groupes = analyse.groupes.map((g) => {
+    const m = g.medianes;
+    const n = (v, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : 'n/d');
+    return `- ${g.libelle} (${g.nombre} frappe(s)) : ` + [
+      `hauteur d'impact ${n(m.hauteurImpact)} (0 = hanche, 1 = épaule)`,
+      `angle du coude à l'impact ${n(m.coudeImpact, 0)}°`,
+      `indice de rotation d'épaules ${n(m.rotationEpaules)} (plus bas = plus de rotation)`,
+      `genou le plus fléchi ${n(m.flexionGenou, 0)}°`,
+      `amplitude d'accompagnement ${n(m.accompagnement, 1)} largeurs d'épaules`,
+      `déplacement de la tête à l'impact ${n(m.deplacementTete)}`,
+      `déplacement du bassin à l'impact ${n(m.deplacementBassin)}`,
+      `vitesse de poignet au pic ${n(m.vitesse, 1)} largeurs d'épaules/s`,
+    ].join(', ');
+  }).join('\n');
+
+  const constats = analyse.constats
+    .filter((c) => c.niveau === 'priorite' || c.niveau === 'corriger')
+    .map((c) => `- [${c.coup}] ${c.titre} — ${c.detail}`)
+    .join('\n') || '- (aucun défaut majeur détecté automatiquement)';
+
+  return [
+    `Joueur ${niveaux[niveau] || niveaux.intermediaire}, ${analyse.mainDominante === 'D' ? 'droitier' : 'gaucher'} (détecté).`,
+    objectif ? `Objectif annoncé par le joueur : ${objectif}` : null,
+    ``,
+    `Séquence analysée : ${analyse.duree.toFixed(1)} s, ${analyse.frappes.length} frappe(s) détectée(s).`,
+    `Qualité de détection de posture : ${Math.round(analyse.tauxDetection * 100)} % des images.`,
+    ``,
+    `Mesures automatiques (médianes par type de coup) :`,
+    groupes || '- (aucun coup identifié)',
+    ``,
+    `Défauts relevés par le moteur de règles :`,
+    constats,
+    ``,
+    nbImages
+      ? `Les images fournies sont les instants d'impact et d'accompagnement des frappes détectées, dans l'ordre chronologique.`
+      : `Aucune image n'a pu être extraite de la vidéo sur cet appareil : appuie-toi uniquement sur les mesures ci-dessus, et dis clairement en introduction que tu n'as pas pu voir les images.`,
+    avecWeb
+      ? `Tu peux utiliser la recherche web pour appuyer un point technique sur une source fiable (fédération, entraîneur reconnu, étude biomécanique) ou pour proposer un exercice éprouvé. Cite les sources utilisées à la fin, sous « ## Sources ». N'utilise la recherche que si elle apporte vraiment quelque chose.`
+      : null,
+  ].filter((l) => l !== null).join('\n');
+}
+
+async function appeler({ apiKey, corps }) {
+  const res = await fetch(URL_API, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify(corps),
+  });
+
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const j = await res.json();
+      detail = j?.error?.message || JSON.stringify(j);
+    } catch {
+      detail = await res.text().catch(() => '');
+    }
+    throw new Error(`API Anthropic ${res.status} : ${detail || res.statusText}`);
+  }
+  return res.json();
+}
+
+/**
+ * @param {{apiKey: string, analyse: object, images: Array<{b64: string, legende: string}>,
+ *          niveau: string, objectif: string, avecWeb: boolean, onStatut: Function}} opts
+ * @returns {Promise<{texte: string, sources: Array, usage: object}>}
+ */
+async function analyserAvecClaude({
+  apiKey, analyse, images, niveau = 'intermediaire', objectif = '',
+  avecWeb = true, onStatut = () => {},
+}) {
+  if (!apiKey) throw new Error('Clé API manquante.');
+
+  const contenu = [];
+  images.forEach((img, i) => {
+    contenu.push({ type: 'text', text: `Image ${i + 1} — ${img.legende}` });
+    contenu.push({
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/jpeg', data: nettoyerBase64(img.b64) },
+    });
+  });
+  contenu.push({
+    type: 'text',
+    text: construirePrompt({ analyse, niveau, objectif, avecWeb, nbImages: images.length }),
+  });
+
+  const messages = [{ role: 'user', content: contenu }];
+  const base = {
+    model: MODELE_IA,
+    max_tokens: 8000,
+    system: SYSTEME,
+    thinking: { type: 'adaptive' },
+    output_config: { effort: 'high' },
+  };
+  if (avecWeb) {
+    base.tools = [{ type: 'web_search_20260209', name: 'web_search', max_uses: 5 }];
+  }
+
+  onStatut('Envoi des images clés à Claude…');
+
+  let reponse = null;
+  for (let tour = 0; tour < 6; tour++) {
+    reponse = await appeler({ apiKey, corps: { ...base, messages } });
+
+    if (reponse.stop_reason === 'pause_turn') {
+      // Un outil serveur (recherche web) a atteint sa limite d'itérations : on relance.
+      messages.push({ role: 'assistant', content: reponse.content });
+      onStatut('Recherche de références en ligne…');
+      continue;
+    }
+    break;
+  }
+
+  if (reponse?.stop_reason === 'refusal') {
+    throw new Error("Claude a décliné cette requête. Réessaie avec une autre séquence ou sans recherche web.");
+  }
+
+  const texte = (reponse?.content || [])
+    .filter((b) => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n')
+    .trim();
+
+  const sources = [];
+  for (const bloc of reponse?.content || []) {
+    if (bloc.type === 'web_search_tool_result' && Array.isArray(bloc.content)) {
+      for (const r of bloc.content) {
+        if (r.url && !sources.some((s) => s.url === r.url)) {
+          sources.push({ url: r.url, titre: r.title || r.url });
+        }
+      }
+    }
+  }
+
+  if (!texte) throw new Error("Réponse vide de l'API.");
+  return { texte, sources, usage: reponse.usage };
+}
+
+/* ===== js/app.js ===== */
+/**
+ * Orchestration de l'interface.
+ */
+
+
+
+
+
+const $ = (sel) => document.querySelector(sel);
+const el = (tag, cls, html) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (html !== undefined) n.innerHTML = html;
+  return n;
+};
+const echapper = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const etat = {
+  fichier: null,
+  echantillon: null,
+  analyse: null,
+};
+
+/* ------------------------------------------------------------------ */
+/* Import de la vidéo                                                  */
+/* ------------------------------------------------------------------ */
+
+const dropzone = $('#dropzone');
+const fileInput = $('#file-input');
+const video = $('#video');
+const overlay = $('#overlay');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+});
+['dragenter', 'dragover'].forEach((ev) =>
+  dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add('survol'); }));
+['dragleave', 'drop'].forEach((ev) =>
+  dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove('survol'); }));
+dropzone.addEventListener('drop', (e) => {
+  const f = e.dataTransfer?.files?.[0];
+  if (f) chargerVideo(f);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files?.[0]) chargerVideo(fileInput.files[0]);
+});
+
+function erreurImport(msg) {
+  const p = $('#import-erreur');
+  p.textContent = msg;
+  p.hidden = !msg;
+}
+
+function chargerVideo(fichier) {
+  if (!fichier.type.startsWith('video/')) {
+    erreurImport("Ce fichier n'est pas une vidéo.");
+    return;
+  }
+  erreurImport('');
+  etat.fichier = fichier;
+  if (video.src) URL.revokeObjectURL(video.src);
+  video.src = URL.createObjectURL(fichier);
+
+  video.addEventListener('loadedmetadata', () => {
+    dropzone.hidden = true;
+    $('#video-zone').hidden = false;
+    const duree = video.duration;
+    const champDuree = $('#opt-duree');
+    champDuree.max = Math.ceil(duree);
+    champDuree.value = Math.min(30, Math.max(3, Math.floor(duree)));
+    $('#opt-debut').max = Math.max(0, Math.floor(duree - 2));
+    dimensionnerOverlay();
+  }, { once: true });
+}
+
+$('#btn-reset').addEventListener('click', () => {
+  dropzone.hidden = false;
+  $('#video-zone').hidden = true;
+  $('#etape-resultats').hidden = true;
+  $('#etape-biblio').hidden = false;
+  fileInput.value = '';
+  etat.echantillon = null;
+  etat.analyse = null;
+});
+
+$('#btn-aide').addEventListener('click', () => $('#dlg-aide').showModal());
+
+/* ------------------------------------------------------------------ */
+/* Squelette sur la vidéo                                              */
+/* ------------------------------------------------------------------ */
+
+function dimensionnerOverlay() {
+  overlay.width = video.clientWidth;
+  overlay.height = video.clientHeight;
+}
+window.addEventListener('resize', dimensionnerOverlay);
+
+function dessinerSquelette(ctx, pts, w, h, { epaisseur = 3, couleur = '#d8f24a' } = {}) {
+  ctx.lineWidth = epaisseur;
+  ctx.strokeStyle = couleur;
+  ctx.fillStyle = couleur;
+  for (const [a, b] of SQUELETTE) {
+    const pa = pts[a], pb = pts[b];
+    if (!pa || !pb) continue;
+    ctx.beginPath();
+    ctx.moveTo(pa.x * w, pa.y * h);
+    ctx.lineTo(pb.x * w, pb.y * h);
+    ctx.stroke();
+  }
+  for (const i of [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]) {
+    const p = pts[i];
+    if (!p) continue;
+    ctx.beginPath();
+    ctx.arc(p.x * w, p.y * h, epaisseur + 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function rafraichirOverlay() {
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  const frames = etat.echantillon?.frames;
+  if (!frames?.length || !video.videoWidth) return;
+
+  const t = video.currentTime;
+  let best = null, d = Infinity;
+  for (const f of frames) {
+    const dd = Math.abs(f.t - t);
+    if (dd < d) { d = dd; best = f; }
+  }
+  if (!best?.pts || d >= 0.2) return;
+
+  // La vidéo est affichée en « contain » : on retrouve le rectangle réellement dessiné.
+  const ratio = video.videoWidth / video.videoHeight;
+  let w = overlay.width, h = overlay.width / ratio;
+  if (h > overlay.height) { h = overlay.height; w = overlay.height * ratio; }
+  ctx.save();
+  ctx.translate((overlay.width - w) / 2, (overlay.height - h) / 2);
+  dessinerSquelette(ctx, best.pts, w, h);
+  ctx.restore();
+}
+video.addEventListener('timeupdate', rafraichirOverlay);
+video.addEventListener('seeked', rafraichirOverlay);
+video.addEventListener('loadeddata', dimensionnerOverlay);
+
+/* ------------------------------------------------------------------ */
+/* Analyse                                                             */
+/* ------------------------------------------------------------------ */
+
+const btnAnalyser = $('#btn-analyser');
+
+function progres(p, label) {
+  $('#progress').hidden = false;
+  $('#progress-fill').style.width = `${Math.round(p * 100)}%`;
+  $('#progress-label').textContent = label;
+}
+
+btnAnalyser.addEventListener('click', async () => {
+  erreurImport('');
+  btnAnalyser.disabled = true;
+  video.pause();
+
+  try {
+    progres(0, 'Préparation…');
+    const echantillon = await echantillonner(video, {
+      debut: Number($('#opt-debut').value) || 0,
+      duree: Number($('#opt-duree').value) || 30,
+      fps: Number($('#opt-fps').value) || 12,
+      onProgres: (p, m) => progres(p * 0.95, m),
+    });
+    etat.echantillon = echantillon;
+
+    progres(0.97, 'Calcul des mesures…');
+    etat.analyse = analyser(echantillon, { main: $('#opt-main').value });
+
+    progres(1, 'Terminé.');
+    setTimeout(() => { $('#progress').hidden = true; }, 800);
+
+    afficherResultats(etat.analyse);
+    rafraichirOverlay();
+  } catch (err) {
+    $('#progress').hidden = true;
+    erreurImport(err.message || String(err));
+  } finally {
+    btnAnalyser.disabled = false;
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Rendu des résultats                                                 */
+/* ------------------------------------------------------------------ */
+
+function afficherResultats(a) {
+  $('#etape-resultats').hidden = false;
+  $('#etape-biblio').hidden = true;
+  rendreSynthese(a);
+  rendreCoups(a);
+  rendreMesures(a);
+  rendreFondamentaux($('#vue-fondamentaux'));
+  $('#etape-resultats').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function carteConstat(c) {
+  const classes = { bon: 'bon', corriger: 'corriger', priorite: 'priorite', info: '' };
+  const node = el('div', `constat ${classes[c.niveau] ?? ''}`);
+  const badge = c.coup ? `<span class="badge">${echapper(c.coup)}</span>` : '';
+  node.appendChild(el('h4', null, `${echapper(c.titre)}${badge}`));
+  node.appendChild(el('p', null, echapper(c.detail)));
+  if (c.exo) node.appendChild(el('p', 'exo', `<strong>Exercice :</strong> ${echapper(c.exo)}`));
+  return node;
+}
+
+function rendreSynthese(a) {
+  const vue = $('#vue-synthese');
+  vue.innerHTML = '';
+
+  if (!a.frappes.length) {
+    vue.appendChild(el('p', 'erreur',
+      "Aucune frappe n'a été détectée sur cette séquence. Vérifie que le joueur est entier dans le cadre, " +
+      "que la caméra est fixe, et augmente la durée analysée ou le nombre d'images par seconde."));
+    a.constats.forEach((c) => vue.appendChild(carteConstat(c)));
+    return;
+  }
+
+  const bloc = el('div', 'score-bloc');
+  const cercle = el('div', 'score-cercle', `<span>${a.score}</span>`);
+  cercle.style.setProperty('--pct', `${a.score}%`);
+  bloc.appendChild(cercle);
+
+  const resume = el('div');
+  const types = a.groupes.map((g) => `${g.nombre} ${g.libelle.toLowerCase()}`).join(', ');
+  resume.appendChild(el('h3', null, `Score technique global : ${a.score}/100`));
+  resume.appendChild(el('p', 'note',
+    `${a.frappes.length} frappe(s) analysée(s) sur ${a.duree.toFixed(1)} s — ${echapper(types)}. ` +
+    `Joueur ${a.mainDominante === 'D' ? 'droitier' : 'gaucher'}. ` +
+    `Posture détectée sur ${Math.round(a.tauxDetection * 100)} % des images.`));
+  bloc.appendChild(resume);
+  vue.appendChild(bloc);
+
+  const sections = [
+    ['priorite', 'À corriger en priorité'],
+    ['corriger', 'À travailler'],
+    ['bon', 'Ce qui fonctionne'],
+    ['info', 'Informations'],
+  ];
+  for (const [niveau, titre] of sections) {
+    const liste = a.constats.filter((c) => c.niveau === niveau);
+    if (!liste.length) continue;
+    vue.appendChild(el('h3', null, echapper(titre)));
+    liste.forEach((c) => vue.appendChild(carteConstat(c)));
+  }
+
+  vue.appendChild(el('p', 'note',
+    "Rappel : ces mesures sont estimées à partir d'une détection de posture 2D. Elles repèrent bien " +
+    "les tendances (rotation, équilibre, amplitude) mais ne remplacent pas l'œil d'un entraîneur, " +
+    "notamment sur la prise de raquette et l'effet donné à la balle."));
+}
+
+function rendreCoups(a) {
+  const vue = $('#vue-coups');
+  vue.innerHTML = '';
+  if (!a.frappes.length) {
+    vue.appendChild(el('p', 'note', 'Aucune frappe détectée.'));
+    return;
+  }
+
+  const grille = el('div', 'coups-grille');
+  a.frappes.forEach((f, i) => {
+    const frame = etat.echantillon.frames[f.indice];
+    const carte = el('div', 'coup-carte');
+
+    const cv = el('canvas');
+    cv.width = 480;
+    cv.height = Math.round(480 * (etat.echantillon.hauteur / etat.echantillon.largeur || 0.5625));
+    const ctx = cv.getContext('2d');
+    const dessiner = () => {
+      if (frame.pts) dessinerSquelette(ctx, frame.pts, cv.width, cv.height, { epaisseur: 2.5 });
+    };
+    if (frame.vignette) {
+      const img = new Image();
+      img.onload = () => { ctx.drawImage(img, 0, 0, cv.width, cv.height); dessiner(); };
+      img.onerror = dessiner;
+      img.src = frame.vignette;
+    } else {
+      ctx.fillStyle = '#11151c';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      dessiner();
+    }
+    carte.appendChild(cv);
+
+    const num = (v, d = 2, u = '') => (Number.isFinite(v) ? v.toFixed(d) + u : '—');
+    const infos = el('div', 'infos');
+    infos.appendChild(el('h4', null, `${i + 1}. ${echapper(LIBELLES_COUP[f.type] || f.type)} — ${f.t.toFixed(1)} s`));
+    infos.appendChild(el('dl', null, `
+      <dt>Hauteur d'impact</dt><dd>${num(f.hauteurImpact)}</dd>
+      <dt>Coude à l'impact</dt><dd>${num(f.coudeImpact, 0, '°')}</dd>
+      <dt>Rotation d'épaules</dt><dd>${num(f.rotationEpaules)}</dd>
+      <dt>Genou fléchi</dt><dd>${num(f.flexionGenou, 0, '°')}</dd>
+      <dt>Accompagnement</dt><dd>${num(f.accompagnement, 1)}</dd>
+      <dt>Vitesse poignet</dt><dd>${num(f.vitesse, 1)}</dd>
+    `));
+    carte.appendChild(infos);
+
+    carte.style.cursor = 'pointer';
+    carte.title = 'Cliquer pour placer la vidéo sur cet instant';
+    carte.addEventListener('click', () => {
+      video.currentTime = f.t;
+      video.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+
+    grille.appendChild(carte);
+  });
+  vue.appendChild(grille);
+}
+
+function rendreMesures(a) {
+  const vue = $('#vue-mesures');
+  vue.innerHTML = '';
+
+  const lignes = [
+    ['Hauteur d\'impact (0 = hanche, 1 = épaule)', 'hauteurImpact', 2],
+    ['Angle du coude à l\'impact (°)', 'coudeImpact', 0],
+    ['Indice de rotation d\'épaules (bas = mieux)', 'rotationEpaules', 2],
+    ['Genou le plus fléchi à l\'armé (°)', 'flexionGenou', 0],
+    ['Accompagnement (largeurs d\'épaules)', 'accompagnement', 1],
+    ['Déplacement de la tête à l\'impact', 'deplacementTete', 2],
+    ['Déplacement du bassin à l\'impact', 'deplacementBassin', 2],
+    ['Vitesse de poignet au pic (l.é./s)', 'vitesse', 1],
+  ];
+
+  if (!a.groupes.length) {
+    vue.appendChild(el('p', 'note', 'Pas de mesure disponible.'));
+    return;
+  }
+
+  const t = el('table');
+  t.innerHTML = `<thead><tr><th>Mesure (médiane)</th>${
+    a.groupes.map((g) => `<th class="num">${echapper(g.libelle)} (${g.nombre})</th>`).join('')
+  }</tr></thead><tbody>${
+    lignes.map(([lbl, cle, dec]) => `<tr><td>${echapper(lbl)}</td>${
+      a.groupes.map((g) => {
+        const v = g.medianes[cle];
+        return `<td class="num">${Number.isFinite(v) ? v.toFixed(dec) : '—'}</td>`;
+      }).join('')
+    }</tr>`).join('')
+  }</tbody>`;
+  vue.appendChild(t);
+
+  vue.appendChild(el('p', 'note',
+    "Les distances sont exprimées en largeurs d'épaules pour rester comparables d'une vidéo à l'autre, " +
+    "quelle que soit la distance de la caméra. L'indice de rotation compare la largeur d'épaules à l'armé " +
+    "et de face : plus il est bas, plus le buste est de profil."));
+}
+
+function rendreFondamentaux(cible) {
+  cible.innerHTML = '';
+  for (const f of FONDAMENTAUX) {
+    const d = el('details', 'fond');
+    d.innerHTML = `
+      <summary>${echapper(f.titre)}</summary>
+      <p class="note">${echapper(f.resume)}</p>
+      <strong>Points clés</strong>
+      <ul>${f.points.map((p) => `<li>${echapper(p)}</li>`).join('')}</ul>
+      <strong>Erreurs fréquentes</strong>
+      <ul>${f.erreurs.map((p) => `<li>${echapper(p)}</li>`).join('')}</ul>`;
+    cible.appendChild(d);
+  }
+  cible.appendChild(el('h3', null, 'Pour aller plus loin'));
+  cible.appendChild(el('ul', null,
+    RESSOURCES.map((r) => `<li><a href="${echapper(r.url)}" target="_blank" rel="noopener">${echapper(r.titre)}</a></li>`).join('')));
+}
+
+/* ------------------------------------------------------------------ */
+/* Onglets                                                             */
+/* ------------------------------------------------------------------ */
+
+document.querySelectorAll('.onglet').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.onglet').forEach((b) => b.classList.remove('actif'));
+    btn.classList.add('actif');
+    document.querySelectorAll('.vue').forEach((v) => { v.hidden = true; });
+    $(`#vue-${btn.dataset.vue}`).hidden = false;
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Analyse IA                                                          */
+/* ------------------------------------------------------------------ */
+
+const CLE_STOCKAGE = 'dial-tennis-cle-api';
+const champCle = $('#ia-cle');
+const caseMemoriser = $('#ia-memoriser');
+
+const cleEnregistree = localStorage.getItem(CLE_STOCKAGE);
+if (cleEnregistree) { champCle.value = cleEnregistree; caseMemoriser.checked = true; }
+caseMemoriser.addEventListener('change', () => {
+  if (caseMemoriser.checked && champCle.value) localStorage.setItem(CLE_STOCKAGE, champCle.value);
+  else localStorage.removeItem(CLE_STOCKAGE);
+});
+
+/** Sélectionne au plus 8 images clés : impact et accompagnement des frappes principales. */
+function imagesClefs(a, max = 8) {
+  const frames = etat.echantillon.frames;
+  const choisies = [];
+  const parType = new Map();
+  for (const f of a.frappes) {
+    const liste = parType.get(f.type) || [];
+    liste.push(f);
+    parType.set(f.type, liste);
+  }
+  // Deux frappes par type au maximum, en privilégiant les plus rapides
+  const retenues = [];
+  for (const [, liste] of parType) {
+    liste.sort((x, y) => y.vitesse - x.vitesse);
+    retenues.push(...liste.slice(0, 2));
+  }
+  retenues.sort((x, y) => x.t - y.t);
+
+  for (const f of retenues) {
+    if (choisies.length >= max) break;
+    const libelle = LIBELLES_COUP[f.type] || f.type;
+    const impact = frames[f.indice];
+    if (impact?.vignette) {
+      choisies.push({ b64: impact.vignette, legende: `${libelle}, instant d'impact (${f.t.toFixed(1)} s)` });
+    }
+    const suivi = frames[Math.min(frames.length - 1, f.indice + 4)];
+    if (suivi?.vignette && choisies.length < max) {
+      choisies.push({ b64: suivi.vignette, legende: `${libelle}, accompagnement (${suivi.t.toFixed(1)} s)` });
+    }
+  }
+  return choisies;
+}
+
+/** Rendu Markdown minimal et sûr (le texte est échappé avant tout balisage). */
+function markdown(src) {
+  const enligne = (s) => echapper(s)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  const out = [];
+  let liste = null;
+  for (const brute of src.split('\n')) {
+    const ligne = brute.trimEnd();
+    const puce = ligne.match(/^\s*[-*]\s+(.*)$/);
+    const num = ligne.match(/^\s*\d+[.)]\s+(.*)$/);
+    const titre = ligne.match(/^(#{1,4})\s+(.*)$/);
+
+    if (puce || num) {
+      const balise = puce ? 'ul' : 'ol';
+      if (liste !== balise) { if (liste) out.push(`</${liste}>`); out.push(`<${balise}>`); liste = balise; }
+      out.push(`<li>${enligne((puce || num)[1])}</li>`);
+      continue;
+    }
+    if (liste) { out.push(`</${liste}>`); liste = null; }
+
+    if (titre) {
+      const n = Math.min(4, titre[1].length + 1);
+      out.push(`<h${n}>${enligne(titre[2])}</h${n}>`);
+    } else if (ligne.trim()) {
+      out.push(`<p>${enligne(ligne)}</p>`);
+    }
+  }
+  if (liste) out.push(`</${liste}>`);
+  return out.join('\n');
+}
+
+$('#btn-ia').addEventListener('click', async () => {
+  const btn = $('#btn-ia');
+  const statut = $('#ia-statut');
+  const err = $('#ia-erreur');
+  const sortie = $('#ia-resultat');
+  err.hidden = true;
+  sortie.innerHTML = '';
+
+  if (!etat.analyse?.frappes.length) {
+    err.textContent = "Lance d'abord l'analyse technique de la vidéo.";
+    err.hidden = false;
+    return;
+  }
+  const cle = champCle.value.trim();
+  if (!cle) {
+    err.textContent = 'Renseigne ta clé API Anthropic (console.anthropic.com).';
+    err.hidden = false;
+    return;
+  }
+  if (caseMemoriser.checked) localStorage.setItem(CLE_STOCKAGE, cle);
+
+  btn.disabled = true;
+  statut.hidden = false;
+  statut.textContent = 'Préparation des images clés…';
+
+  try {
+    const { texte, sources } = await analyserAvecClaude({
+      apiKey: cle,
+      analyse: etat.analyse,
+      images: imagesClefs(etat.analyse),
+      niveau: $('#ia-niveau').value,
+      objectif: $('#ia-objectif').value.trim(),
+      avecWeb: $('#ia-web').checked,
+      onStatut: (m) => { statut.textContent = m; },
+    });
+
+    sortie.innerHTML = markdown(texte);
+    if (sources.length) {
+      const bloc = el('div', 'sources');
+      bloc.innerHTML = '<strong>Sources consultées :</strong><ul>' +
+        sources.map((s) => `<li><a href="${echapper(s.url)}" target="_blank" rel="noopener">${echapper(s.titre)}</a></li>`).join('') +
+        '</ul>';
+      sortie.appendChild(bloc);
+    }
+    statut.textContent = 'Analyse terminée.';
+  } catch (e) {
+    const msg = e.message || String(e);
+    err.textContent = /Failed to fetch|NetworkError/i.test(msg)
+      ? "Appel bloqué par le navigateur ou le réseau. Vérifie ta connexion ; certains bloqueurs empêchent l'appel direct à api.anthropic.com."
+      : msg;
+    err.hidden = false;
+    statut.hidden = true;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Démarrage                                                           */
+/* ------------------------------------------------------------------ */
+
+rendreFondamentaux($('#biblio'));
+</script>
+</body>
+</html>

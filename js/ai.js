@@ -4,7 +4,7 @@
  */
 
 const URL_API = 'https://api.anthropic.com/v1/messages';
-const MODELE = 'claude-opus-5';
+const MODELE_IA = 'claude-opus-5';
 
 const SYSTEME = `Tu es entraîneur de tennis diplômé (niveau DE / ITF Level 2). Tu analyses des images clés
 extraites d'une vidéo d'un joueur amateur, accompagnées de mesures biomécaniques calculées automatiquement
@@ -35,7 +35,7 @@ function nettoyerBase64(dataURL) {
   return i >= 0 ? dataURL.slice(i + 1) : dataURL;
 }
 
-function construirePrompt({ analyse, niveau, objectif, avecWeb }) {
+function construirePrompt({ analyse, niveau, objectif, avecWeb, nbImages }) {
   const niveaux = {
     debutant: 'débutant (moins de 2 ans de pratique)',
     intermediaire: 'intermédiaire, joueur de club',
@@ -75,7 +75,9 @@ function construirePrompt({ analyse, niveau, objectif, avecWeb }) {
     `Défauts relevés par le moteur de règles :`,
     constats,
     ``,
-    `Les images fournies sont les instants d'impact et d'accompagnement des frappes détectées, dans l'ordre chronologique.`,
+    nbImages
+      ? `Les images fournies sont les instants d'impact et d'accompagnement des frappes détectées, dans l'ordre chronologique.`
+      : `Aucune image n'a pu être extraite de la vidéo sur cet appareil : appuie-toi uniquement sur les mesures ci-dessus, et dis clairement en introduction que tu n'as pas pu voir les images.`,
     avecWeb
       ? `Tu peux utiliser la recherche web pour appuyer un point technique sur une source fiable (fédération, entraîneur reconnu, étude biomécanique) ou pour proposer un exercice éprouvé. Cite les sources utilisées à la fin, sous « ## Sources ». N'utilise la recherche que si elle apporte vraiment quelque chose.`
       : null,
@@ -126,11 +128,14 @@ export async function analyserAvecClaude({
       source: { type: 'base64', media_type: 'image/jpeg', data: nettoyerBase64(img.b64) },
     });
   });
-  contenu.push({ type: 'text', text: construirePrompt({ analyse, niveau, objectif, avecWeb }) });
+  contenu.push({
+    type: 'text',
+    text: construirePrompt({ analyse, niveau, objectif, avecWeb, nbImages: images.length }),
+  });
 
   const messages = [{ role: 'user', content: contenu }];
   const base = {
-    model: MODELE,
+    model: MODELE_IA,
     max_tokens: 8000,
     system: SYSTEME,
     thinking: { type: 'adaptive' },

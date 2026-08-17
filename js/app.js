@@ -276,12 +276,19 @@ function rendreCoups(a) {
     cv.width = 480;
     cv.height = Math.round(480 * (etat.echantillon.hauteur / etat.echantillon.largeur || 0.5625));
     const ctx = cv.getContext('2d');
-    const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    const dessiner = () => {
       if (frame.pts) dessinerSquelette(ctx, frame.pts, cv.width, cv.height, { epaisseur: 2.5 });
     };
-    img.src = frame.vignette;
+    if (frame.vignette) {
+      const img = new Image();
+      img.onload = () => { ctx.drawImage(img, 0, 0, cv.width, cv.height); dessiner(); };
+      img.onerror = dessiner;
+      img.src = frame.vignette;
+    } else {
+      ctx.fillStyle = '#11151c';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      dessiner();
+    }
     carte.appendChild(cv);
 
     const num = (v, d = 2, u = '') => (Number.isFinite(v) ? v.toFixed(d) + u : '—');
@@ -415,9 +422,12 @@ function imagesClefs(a, max = 8) {
   for (const f of retenues) {
     if (choisies.length >= max) break;
     const libelle = LIBELLES_COUP[f.type] || f.type;
-    choisies.push({ b64: frames[f.indice].vignette, legende: `${libelle}, instant d'impact (${f.t.toFixed(1)} s)` });
+    const impact = frames[f.indice];
+    if (impact?.vignette) {
+      choisies.push({ b64: impact.vignette, legende: `${libelle}, instant d'impact (${f.t.toFixed(1)} s)` });
+    }
     const suivi = frames[Math.min(frames.length - 1, f.indice + 4)];
-    if (suivi && choisies.length < max) {
+    if (suivi?.vignette && choisies.length < max) {
       choisies.push({ b64: suivi.vignette, legende: `${libelle}, accompagnement (${suivi.t.toFixed(1)} s)` });
     }
   }
