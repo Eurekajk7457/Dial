@@ -1494,7 +1494,21 @@ function detecterMain(series, force = 'auto') {
   return cheminD >= cheminG ? 'D' : 'G';
 }
 
-/** Vitesse du poignet dominant, en largeurs d'épaules par seconde. */
+/**
+ * Au-delà de ces valeurs, ce n'est plus un geste humain : c'est la détection qui a sauté
+ * d'une personne à l'autre, ou perdu puis retrouvé le joueur ailleurs dans l'image.
+ * Un poignet de professionnel plafonne autour de 25 largeurs d'épaules par seconde.
+ */
+const VITESSE_INVRAISEMBLABLE = 60;   // largeurs d'épaules / s
+const SAUT_CORPS = 0.6;               // largeurs d'épaules parcourues par le bassin en une image
+
+/**
+ * Vitesse du poignet dominant, en largeurs d'épaules par seconde.
+ *
+ * Les sauts de détection sont écartés plutôt que lissés : quand le détecteur passe d'un
+ * joueur à l'autre, le poignet paraît franchir la moitié de l'écran en une image. Une seule
+ * de ces valeurs suffisait à fausser tout le seuil de détection, donc à ne plus rien trouver.
+ */
 function vitessePoignet(series, main) {
   const cle = main === 'D' ? 'poignetD' : 'poignetG';
   const v = new Array(series.length).fill(NaN);
@@ -1503,9 +1517,42 @@ function vitessePoignet(series, main) {
     if (!a.ok || !b.ok) continue;
     const dt = b.t - a.t;
     if (dt <= 0) continue;
-    v[i] = dist(a[cle], b[cle]) / b.sw / dt;
+
+    // Sur une frappe, le poignet file mais le bassin reste posé. S'il se téléporte lui aussi,
+    // c'est que le squelette a changé de personne.
+    if (dist(a.hanches, b.hanches) / b.sw > SAUT_CORPS) continue;
+
+    const vitesse = dist(a[cle], b[cle]) / b.sw / dt;
+    if (vitesse > VITESSE_INVRAISEMBLABLE) continue;
+    v[i] = vitesse;
   }
   return lisser(v, 3);
+}
+
+/**
+ * Combien de fois le squelette a changé de place d'un coup, en proportion des transitions
+ * exploitables. Au-delà de quelques pour cent, il y a plusieurs personnes dans le champ
+ * ou la détection décroche sans arrêt — et aucun réglage de seuil n'y changera rien.
+ */
+function tauxSautsDetection(series) {
+  let transitions = 0, sauts = 0;
+  for (let i = 1; i < series.length; i++) {
+    const a = series[i - 1], b = series[i];
+    if (!a.ok || !b.ok) continue;
+    transitions++;
+    if (dist(a.hanches, b.hanches) / b.sw > SAUT_CORPS) sauts++;
+  }
+  return transitions ? sauts / transitions : 0;
+}
+
+/**
+ * Quantile d'une série. Sert de « maximum robuste » : un seul pic aberrant ne doit pas
+ * décider du seuil de détection de toute la vidéo.
+ */
+function quantile(triee, q) {
+  if (!triee.length) return NaN;
+  const rang = borne(Math.round((triee.length - 1) * q), 0, triee.length - 1);
+  return triee[rang];
 }
 
 /* ------------------------------------------------------------------ */
@@ -1527,8 +1574,10 @@ function detecterFrappes(
 ) {
   const valides = finis(vitesse);
   if (valides.length < 5) return [];
-  const max = Math.max(...valides);
-  const seuil = Math.max(max * 0.45, plancher); // largeurs d'épaules / s
+  // 98e centile plutôt que le maximum : identique sur une vidéo propre, insensible aux
+  // quelques images où la détection déraille.
+  const reference = quantile([...valides].sort((a, b) => a - b), 0.98);
+  const seuil = Math.max(reference * 0.45, plancher); // largeurs d'épaules / s
 
   const pics = [];
   for (let i = 1; i < vitesse.length - 1; i++) {
@@ -1559,8 +1608,10 @@ function detecterFrappes(
 function diagnostiquerFrappes(series, vitesse) {
   const valides = finis(vitesse);
   const imagesOk = series.filter((s) => s.ok).length;
-  const max = valides.length ? Math.max(...valides) : 0;
+  const triee = [...valides].sort((a, b) => a - b);
+  const max = valides.length ? quantile(triee, 0.98) : 0;
   const seuilStrict = Math.max(max * 0.45, PLANCHER_STRICT);
+  const sauts = tauxSautsDetection(series);
 
   const pics = valides.length
     ? vitesse.filter((v, i) =>
@@ -1574,6 +1625,9 @@ function diagnostiquerFrappes(series, vitesse) {
     vitesseMax: max,
     seuilStrict,
     picsBruts: pics,
+    sauts,
+    // Au-delà de 8 %, le squelette change de personne trop souvent pour qu'on mesure quoi que ce soit.
+    detectionInstable: sauts > 0.08,
     // Le poignet n'a jamais accéléré : c'est un problème de vidéo, pas de réglage de seuil.
     tropLent: max < PLANCHER_SOUPLE,
   };
@@ -2081,6 +2135,13 @@ function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte
   // Aucune frappe : dire précisément ce qui a été vu, sinon le joueur change des réglages au hasard.
   if (!frappes.length && diagnostic && !mainSuspecte) {
     const pistes = [];
+    // Cause la plus fréquente et la plus déroutante : le squelette saute d'une personne
+    // à l'autre. Elle passe avant tout le reste, car aucun réglage ne la compense.
+    if (diagnostic.detectionInstable) {
+      pistes.push("le squelette saute d'une personne à l'autre sur " +
+        `${Math.round(diagnostic.sauts * 100)} % des images : filme un seul joueur dans le champ, ` +
+        "ou recadre pour que l'adversaire et les joueurs du court voisin sortent de l'image");
+    }
     if (tauxDetection < 0.5) {
       pistes.push("le joueur n'est reconnu que sur une minorité d'images : cadre-le en entier, " +
         "des pieds à la raquette levée, avec un seul joueur dans le champ");
@@ -2110,9 +2171,25 @@ function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte
         `(${Math.round(tauxDetection * 100)} %). Vitesse maximale du poignet : ` +
         `${diagnostic.vitesseMax.toFixed(1)} largeurs d'épaules par seconde, alors qu'une frappe ` +
         `en demande au moins ${diagnostic.seuilStrict.toFixed(1)}. ` +
+        (diagnostic.detectionInstable
+          ? `Surtout, le squelette change de personne sur ${Math.round(diagnostic.sauts * 100)} % ` +
+            `des images : tant que ça saute autant, aucune mesure n'est fiable. `
+          : '') +
         `L'angle de la caméra n'y est pour rien : il ne sert qu'à nuancer les conseils, ` +
         `jamais à repérer les frappes.`,
       exo: `À essayer, dans cet ordre : ${pistes.join(' ; ')}.`,
+    });
+  }
+
+  if (diagnostic?.detectionInstable && frappes.length) {
+    c.push({
+      niveau: 'priorite', coup: 'Qualité vidéo',
+      titre: 'Le squelette saute d\'une personne à l\'autre',
+      detail: `Sur ${Math.round(diagnostic.sauts * 100)} % des images, le corps détecté se déplace ` +
+        `d'un bond : la détection change de personne. Les mesures ci-dessous mélangent donc ` +
+        `probablement plusieurs joueurs et sont à prendre avec beaucoup de recul.`,
+      exo: "Refilme avec un seul joueur visible : recadre pour sortir l'adversaire et le court voisin, " +
+        "ou rapproche-toi pour que ton joueur occupe la plus grande partie de l'image.",
     });
   }
 

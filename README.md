@@ -71,19 +71,28 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
     (MediaPipe nomme les points selon l'anatomie, donc leur ordre s'inverse entre face et dos).
     La médiane sur toute la séquence décrit la caméra, pas les pivots du joueur. Le résultat est
     affiché en Synthèse, avec sa confiance.
-17. **Détection de frappes en deux passes** et diagnostic d'échec. La passe stricte (plancher
+17. **Sauts de détection écartés**. Quand plusieurs personnes sont dans le champ, MediaPipe passe
+    de l'une à l'autre : le poignet paraît alors franchir l'écran en une image, à des vitesses
+    physiquement impossibles. Le seuil de détection se calant sur le maximum observé, **un seul**
+    de ces pics le rendait inatteignable et rejetait toutes les vraies frappes. Deux garde-fous :
+    les transitions où le bassin se déplace de plus de 0,6 largeur d'épaules d'une image à l'autre
+    sont ignorées (le bassin reste posé pendant une frappe), tout comme les vitesses au-delà de
+    60 largeurs/s ; et le seuil se cale désormais sur le 98e centile plutôt que sur le maximum —
+    identique sur une vidéo propre, insensible à quelques images aberrantes. Le taux de sauts est
+    mesuré et signalé au joueur : au-delà de 8 %, aucun réglage ne compense, il faut recadrer.
+18. **Détection de frappes en deux passes** et diagnostic d'échec. La passe stricte (plancher
     2,2 largeurs d'épaules/s) évite de confondre un replacement avec une frappe ; si elle ne trouve
     rien, une passe souple (plancher 1,1) reprend la main et le dit dans les constats. Quand rien
     n'est trouvé, l'app annonce les chiffres réels — images lues, taux de reconnaissance, vitesse
     maximale du poignet contre le seuil requis — et les pistes classées : cadrage, distance, fenêtre
     analysée plus courte que la vidéo, images par seconde trop basses.
-18. **Transfert d'un téléphone à l'autre** : export de tout l'historique en un fichier JSON,
+19. **Transfert d'un téléphone à l'autre** : export de tout l'historique en un fichier JSON,
     import fusionnant sur l'autre appareil. La fusion se fait par identifiant d'analyse, donc
     deux téléphones qui s'échangent leurs fichiers convergent sans que l'un écrase l'autre, et
     réimporter le même fichier n'ajoute rien. Sert aussi de sauvegarde — vider son navigateur
     efface le `localStorage`, et personne ne s'y attend. Il n'y a **pas** de synchronisation
     automatique : elle demanderait un compte et un serveur, que cette app n'a pas.
-19. **Bilan sur toutes les séances** : les constats sont regroupés par titre et par coup, puis classés
+20. **Bilan sur toutes les séances** : les constats sont regroupés par titre et par coup, puis classés
     en *récurrent* (présent sur la dernière séance et vu au moins deux fois), *nouveau*, *réglé*
     (présent avant, absent de la dernière), *point fort acquis* et *point fort perdu de vue*. Chaque
     entrée porte une frise d'une pastille par séance, un compteur « vu sur N séances sur M », et les
