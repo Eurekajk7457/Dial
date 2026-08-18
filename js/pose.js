@@ -141,6 +141,9 @@ export async function echantillonner(video, { debut = 0, duree = 30, fps = 12, o
     largeur: video.videoWidth,
     hauteur: video.videoHeight,
     tauxDetection: frames.length ? detectees / frames.length : 0,
+    // La fenêtre réellement regardée : sans elle, impossible de dire au joueur que le
+    // jeu se trouve peut-être plus loin dans sa vidéo que l'extrait analysé.
+    fenetre: { debut, fin, dureeVideo: video.duration || 0, fps },
   };
 }
 

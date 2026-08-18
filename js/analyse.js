@@ -114,14 +114,23 @@ export function vitessePoignet(series, main) {
 /* 2. Détection des frappes                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Plancher absolu de vitesse, en largeurs d'épaules par seconde. Il évite de prendre un
+ * replacement tranquille pour une frappe. Mais filmé de loin, ou à faible cadence, une vraie
+ * frappe peut passer dessous : on garde donc un plancher de repli, essayé seulement quand
+ * le premier ne trouve rien du tout.
+ */
+export const PLANCHER_STRICT = 2.2;
+export const PLANCHER_SOUPLE = 1.1;
+
 export function detecterFrappes(
   series, vitesse,
-  { ecartMin = 0.55, fenetreDomination = 0.8, ratioDomination = 1.7 } = {},
+  { ecartMin = 0.55, fenetreDomination = 0.8, ratioDomination = 1.7, plancher = PLANCHER_STRICT } = {},
 ) {
   const valides = finis(vitesse);
   if (valides.length < 5) return [];
   const max = Math.max(...valides);
-  const seuil = Math.max(max * 0.45, 2.2); // largeurs d'épaules / s
+  const seuil = Math.max(max * 0.45, plancher); // largeurs d'épaules / s
 
   const pics = [];
   for (let i = 1; i < vitesse.length - 1; i++) {
@@ -143,6 +152,95 @@ export function detecterFrappes(
     if (gardes.every((g) => Math.abs(g.t - pic.t) >= ecartMin)) gardes.push(pic);
   }
   return gardes.sort((a, b) => a.t - b.t);
+}
+
+/**
+ * Pourquoi la détection n'a rien donné. Sans ces chiffres, « aucune frappe détectée »
+ * laisse le joueur deviner — et il finit par changer des réglages sans rapport.
+ */
+export function diagnostiquerFrappes(series, vitesse) {
+  const valides = finis(vitesse);
+  const imagesOk = series.filter((s) => s.ok).length;
+  const max = valides.length ? Math.max(...valides) : 0;
+  const seuilStrict = Math.max(max * 0.45, PLANCHER_STRICT);
+
+  const pics = valides.length
+    ? vitesse.filter((v, i) =>
+      Number.isFinite(v) && i > 0 && i < vitesse.length - 1
+      && v >= (vitesse[i - 1] ?? 0) && v > (vitesse[i + 1] ?? 0)).length
+    : 0;
+
+  return {
+    images: series.length,
+    imagesOk,
+    vitesseMax: max,
+    seuilStrict,
+    picsBruts: pics,
+    // Le poignet n'a jamais accéléré : c'est un problème de vidéo, pas de réglage de seuil.
+    tropLent: max < PLANCHER_SOUPLE,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* 2 bis. Orientation de la caméra                                     */
+/* ------------------------------------------------------------------ */
+
+export const LIBELLES_ANGLE = {
+  cote: 'sur le côté du joueur',
+  face: 'devant le joueur',
+  dos: 'derrière le joueur',
+  autre: 'en diagonale',
+};
+
+/**
+ * Déduit d'où la vidéo a été filmée, au lieu de le demander au joueur.
+ *
+ * Deux signaux suffisent, tous deux lisibles sur la posture :
+ *
+ * 1. La largeur d'épaules rapportée à la hauteur du tronc. De face ou de dos, les épaules
+ *    occupent une large fraction du tronc ; de profil, elles se réduisent fortement.
+ * 2. L'ordre des épaules à l'écran. MediaPipe nomme les points selon l'anatomie : quand le
+ *    joueur nous fait face, son épaule droite apparaît à gauche de l'image (x plus petit) ;
+ *    filmé de dos, l'ordre s'inverse. Le signe de la différence tranche donc face / dos.
+ *
+ * On prend la médiane sur toute la séquence : un joueur pivote sans arrêt, seule la
+ * tendance d'ensemble décrit la caméra.
+ */
+export function detecterAngle(series) {
+  const ok = series.filter((s) => s.ok);
+  if (ok.length < 8) return { angle: 'autre', confiance: 0, largeurRelative: NaN, orientation: NaN };
+
+  // Hauteur du tronc : épaules → hanches, dans la même unité que sw (x déjà mis à l'échelle).
+  const largeurs = [];
+  const orientations = [];
+  for (const s of ok) {
+    const tronc = Math.abs(s.hanches.y - s.epaules.y);
+    if (tronc > 0.02) largeurs.push(s.sw / tronc);
+    orientations.push(s.epauleD.x - s.epauleG.x);
+  }
+  if (!largeurs.length) return { angle: 'autre', confiance: 0, largeurRelative: NaN, orientation: NaN };
+
+  const largeurRelative = mediane(largeurs);
+  const orientation = mediane(orientations);
+
+  // De profil, les épaules se superposent : la largeur relative s'effondre.
+  const DE_PROFIL = 0.55;
+  const DE_FACE = 0.80;
+
+  let angle, confiance;
+  if (largeurRelative < DE_PROFIL) {
+    angle = 'cote';
+    confiance = borne((DE_PROFIL - largeurRelative) / 0.25, 0.3, 1);
+  } else if (largeurRelative >= DE_FACE) {
+    angle = orientation < 0 ? 'face' : 'dos';
+    confiance = borne((largeurRelative - DE_FACE) / 0.3 + 0.5, 0.4, 1);
+  } else {
+    // Entre les deux : trois quarts. On tranche vers le plus probable sans prétendre être sûr.
+    angle = 'autre';
+    confiance = 0.35;
+  }
+
+  return { angle, confiance, largeurRelative, orientation };
 }
 
 /* ------------------------------------------------------------------ */
@@ -578,8 +676,74 @@ function reglesGroupe(type, frappes) {
 }
 
 /** Règles globales, indépendantes du type de coup. */
-function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte = false) {
+function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte = false, contexte = {}) {
   const c = [];
+  const { diagnostic, detectionSouple, fenetre, camera } = contexte;
+
+  // Aucune frappe : dire précisément ce qui a été vu, sinon le joueur change des réglages au hasard.
+  if (!frappes.length && diagnostic && !mainSuspecte) {
+    const pistes = [];
+    if (tauxDetection < 0.5) {
+      pistes.push("le joueur n'est reconnu que sur une minorité d'images : cadre-le en entier, " +
+        "des pieds à la raquette levée, avec un seul joueur dans le champ");
+    }
+    if (diagnostic.tropLent) {
+      pistes.push("le poignet ne va jamais vite : soit la séquence ne contient pas de frappe, " +
+        "soit le joueur est trop loin ou trop petit dans l'image — rapproche la caméra à 5–10 m");
+    }
+    if (fenetre && fenetre.dureeVideo - fenetre.fin > 1) {
+      pistes.push(`seules les secondes ${Math.round(fenetre.debut)} à ${Math.round(fenetre.fin)} ` +
+        `ont été regardées, alors que ta vidéo dure ${Math.round(fenetre.dureeVideo)} s — ` +
+        `si tu joues plus tard, augmente « Durée analysée » ou décale « Début » dans les réglages avancés`);
+    }
+    if (fenetre && fenetre.fps <= 8) {
+      pistes.push("à 8 images par seconde, une frappe rapide peut passer entre deux images : " +
+        "monte à 12 ou 20 dans les réglages avancés");
+    }
+    if (!pistes.length) {
+      pistes.push("la vidéo a bien été lue, mais aucun mouvement n'a le profil d'une frappe " +
+        "— vérifie que la séquence contient bien des balles jouées");
+    }
+
+    c.push({
+      niveau: 'priorite', coup: 'Détection',
+      titre: 'Aucune frappe trouvée dans cet extrait',
+      detail: `Sur ${diagnostic.images} images, le joueur a été reconnu sur ${diagnostic.imagesOk} ` +
+        `(${Math.round(tauxDetection * 100)} %). Vitesse maximale du poignet : ` +
+        `${diagnostic.vitesseMax.toFixed(1)} largeurs d'épaules par seconde, alors qu'une frappe ` +
+        `en demande au moins ${diagnostic.seuilStrict.toFixed(1)}. ` +
+        `L'angle de la caméra n'y est pour rien : il ne sert qu'à nuancer les conseils, ` +
+        `jamais à repérer les frappes.`,
+      exo: `À essayer, dans cet ordre : ${pistes.join(' ; ')}.`,
+    });
+  }
+
+  if (detectionSouple && frappes.length) {
+    c.push({
+      niveau: 'corriger', coup: 'Détection',
+      titre: 'Frappes repérées de justesse',
+      detail: "Aucun mouvement n'atteignait le seuil habituel : l'app a abaissé son exigence pour " +
+        "ne pas te renvoyer une page vide. Les frappes ci-dessous sont probablement les bonnes, " +
+        "mais un geste de replacement a pu s'y glisser.",
+      exo: 'Filme de plus près (5 à 10 m, joueur en entier) pour une détection franche.',
+    });
+  }
+
+  if (camera && frappes.length) {
+    const dit = {
+      cote: 'sur le côté du joueur — idéal pour le coup droit et le revers',
+      face: 'devant le joueur — idéal pour le service, moins fiable pour les angles de bras en fond de court',
+      dos: 'derrière le joueur — bon pour le service et les appuis',
+      autre: "en diagonale, ou l'orientation change trop pour trancher",
+    }[camera.angle];
+    c.push({
+      niveau: 'info', coup: 'Prise de vue',
+      titre: `Caméra détectée : ${{ cote: 'sur le côté', face: 'de face', dos: 'de dos', autre: 'en diagonale' }[camera.angle]}`,
+      detail: `La position de la caméra est déduite de ta posture, tu n'as rien à renseigner : ${dit}.` +
+        (camera.confiance < 0.5 ? " Détection peu sûre sur cette vidéo." : ''),
+    });
+  }
+
   if (mainSuspecte) {
     c.push({
       niveau: 'priorite', coup: 'Réglage',
@@ -716,13 +880,23 @@ export function analyserResultats(frappes) {
 /* 6. Point d'entrée                                                   */
 /* ------------------------------------------------------------------ */
 
-export function analyser({ frames, largeur, hauteur, tauxDetection }, profil = {}) {
+export function analyser({ frames, largeur, hauteur, tauxDetection, fenetre = null }, profil = {}) {
   const { main = 'auto', coup = 'auto' } = profil;
 
   const series = construireSeries(frames, largeur, hauteur);
   const mainDominante = detecterMain(series, main);
   const vitesse = vitessePoignet(series, mainDominante);
-  const pics = detecterFrappes(series, vitesse);
+  const camera = detecterAngle(series);
+
+  // Deux passes : la stricte évite de confondre un replacement avec une frappe ; la souple
+  // ne sert que si la stricte ne trouve rien — mieux vaut une détection prudente que rien.
+  let pics = detecterFrappes(series, vitesse);
+  let detectionSouple = false;
+  if (!pics.length) {
+    pics = detecterFrappes(series, vitesse, { plancher: PLANCHER_SOUPLE });
+    detectionSouple = pics.length > 0;
+  }
+  const diagnostic = diagnostiquerFrappes(series, vitesse);
 
   const frappes = pics
     .map((pic) => mesurerFrappe(series, pic, mainDominante, coup))
@@ -751,7 +925,8 @@ export function analyser({ frames, largeur, hauteur, tauxDetection }, profil = {
     if (liste.length === 0) continue;
     constats = constats.concat(reglesGroupe(type, liste));
   }
-  constats = constats.concat(reglesGlobales(frappes, duree, tauxDetection, profil, mainSuspecte));
+  constats = constats.concat(reglesGlobales(frappes, duree, tauxDetection, profil, mainSuspecte,
+    { diagnostic, detectionSouple, fenetre, camera }));
 
   // Score : on part de 100 et on retire selon la gravité des constats
   const penalites = { priorite: 15, corriger: 8, bon: 0, info: 0 };
@@ -773,7 +948,10 @@ export function analyser({ frames, largeur, hauteur, tauxDetection }, profil = {
     constats,
     score,
     mainDominante,
-    profil,
+    profil: { ...profil, angle: camera.angle },
+    camera,
+    diagnostic,
+    detectionSouple,
     duree,
     tauxDetection,
     groupes: [...groupes.entries()].map(([type, liste]) => ({

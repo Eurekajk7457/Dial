@@ -11,6 +11,7 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
 ## Ce que ça fait
 
 1. Tu réponds à quelques questions (main dominante et coup filmé sont obligatoires).
+   L'angle de la caméra, lui, est **déduit de la posture** : plus rien à renseigner.
 2. La posture est détectée image par image, **dans ton navigateur**.
 3. Tu obtiens un score, des constats classés par priorité, un exercice pour chacun.
 4. **Frappe par frappe**, chaque mesure est jugée : ce qui va, ce qui ne va pas, et pourquoi.
@@ -64,7 +65,18 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
     détection ; changer les réglages (début, durée, images/seconde) relance normalement, puisque
     c'est un autre extrait. En `file://`, sans `crypto.subtle`, l'empreinte retombe sur
     nom + taille + date.
-16. **Bilan sur toutes les séances** : les constats sont regroupés par titre et par coup, puis classés
+16. **Angle de caméra détecté**, plus demandé. Deux signaux suffisent : la largeur d'épaules
+    rapportée à la hauteur du tronc (elle s'effondre de profil) et l'ordre des épaules à l'écran
+    (MediaPipe nomme les points selon l'anatomie, donc leur ordre s'inverse entre face et dos).
+    La médiane sur toute la séquence décrit la caméra, pas les pivots du joueur. Le résultat est
+    affiché en Synthèse, avec sa confiance.
+17. **Détection de frappes en deux passes** et diagnostic d'échec. La passe stricte (plancher
+    2,2 largeurs d'épaules/s) évite de confondre un replacement avec une frappe ; si elle ne trouve
+    rien, une passe souple (plancher 1,1) reprend la main et le dit dans les constats. Quand rien
+    n'est trouvé, l'app annonce les chiffres réels — images lues, taux de reconnaissance, vitesse
+    maximale du poignet contre le seuil requis — et les pistes classées : cadrage, distance, fenêtre
+    analysée plus courte que la vidéo, images par seconde trop basses.
+18. **Bilan sur toutes les séances** : les constats sont regroupés par titre et par coup, puis classés
     en *récurrent* (présent sur la dernière séance et vu au moins deux fois), *nouveau*, *réglé*
     (présent avant, absent de la dernière), *point fort acquis* et *point fort perdu de vue*. Chaque
     entrée porte une frise d'une pastille par séance, un compteur « vu sur N séances sur M », et les

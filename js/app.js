@@ -65,7 +65,6 @@ function lireProfil() {
     coup: $('#opt-coup').value,
     revers: $('#opt-revers').value,
     prise: $('#opt-prise').value,
-    angle: $('#opt-angle').value,
     niveau: $('#opt-niveau').value,
     anciennete: $('#opt-anciennete').value,
     objectif: $('#opt-objectif').value.trim(),
@@ -395,7 +394,13 @@ function carteConstat(c) {
   const badge = c.coup ? `<span class="badge">${echapper(c.coup)}</span>` : '';
   node.appendChild(el('h4', null, `${echapper(c.titre)}${badge}`));
   node.appendChild(el('p', null, echapper(c.detail)));
-  if (c.exo) node.appendChild(el('p', 'exo', `<strong>Exercice :</strong> ${echapper(c.exo)}`));
+  // Sur un problème de réglage ou de prise de vue, parler d'« exercice » n'a pas de sens :
+  // ce n'est pas le geste qu'il faut travailler, c'est la vidéo qu'il faut refaire.
+  const TECHNIQUE = !['Détection', 'Réglage', 'Qualité vidéo'].includes(c.coup);
+  if (c.exo) {
+    node.appendChild(el('p', 'exo',
+      `<strong>${TECHNIQUE ? 'Exercice' : 'À essayer'} :</strong> ${echapper(c.exo)}`));
+  }
   // Un défaut nommé se corrige mieux en le voyant faire — mais seulement si une recherche
   // vidéo pertinente existe pour lui : mieux vaut pas de lien qu'un lien hors sujet.
   const v = videoConstat(c.titre);
@@ -409,8 +414,8 @@ function rendreSynthese(a) {
 
   if (!a.frappes.length) {
     vue.appendChild(el('p', 'erreur',
-      "Aucune frappe n'a été détectée sur cette séquence. Vérifie que le joueur est entier dans le cadre, " +
-      "que la caméra est fixe, et augmente la durée analysée ou le nombre d'images par seconde."));
+      "Aucune frappe n'a été détectée sur cette séquence. Le détail juste en dessous dit " +
+      "exactement ce qui a été vu, et quoi essayer."));
     a.constats.forEach((c) => vue.appendChild(carteConstat(c)));
     return;
   }

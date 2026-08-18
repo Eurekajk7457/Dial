@@ -147,7 +147,7 @@ function construirePrompt({ analyse, avecWeb, nbImages, bilan = null }) {
     `- Prise de raquette déclarée : ${LIBELLES.prise[p.prise] || 'inconnue du joueur'}`,
     `- Niveau : ${LIBELLES.niveau[p.niveau] || LIBELLES.niveau.intermediaire}`,
     p.anciennete ? `- Expérience : ${LIBELLES.anciennete[p.anciennete]}` : null,
-    `- Caméra placée ${LIBELLES.angle[p.angle] || 'position non précisée'}`,
+    `- Caméra placée ${LIBELLES.angle[p.angle] || 'position non déterminée'} (déduit automatiquement de la posture, pas déclaré par le joueur)`,
     p.objectif ? `- Ce que le joueur veut améliorer, dans ses mots : « ${p.objectif} »` : null,
     ``,
     !declaree
