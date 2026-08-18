@@ -550,3 +550,33 @@ details.ia-config {
   background: var(--surface-2); padding: .7rem .9rem;
 }
 details.ia-config > summary { cursor: pointer; color: var(--txt2); font-size: .9rem; min-height: var(--touche); padding: .6rem 0; }
+
+/* ---------- Bilan sur l'ensemble des séances ---------- */
+
+.bloc-bilan { margin-bottom: 1.8rem; }
+.bloc-bilan h3 { display: flex; align-items: center; gap: .5rem; }
+.bloc-bilan h3 .compte {
+  font-size: .74rem; font-weight: 700; color: var(--txt2);
+  background: var(--surface-3); border-radius: 99px; padding: .1rem .5rem;
+}
+.bloc-bilan > .note { margin-top: -.25rem; margin-bottom: .8rem; }
+.bilan-compte { font-size: .88rem; color: var(--txt2); margin-bottom: .4rem !important; }
+
+/* Une pastille par séance : d'un coup d'œil, on voit si le défaut s'espace ou s'installe. */
+.frise { display: flex; gap: .22rem; align-items: center; margin: 0 0 .6rem; flex-wrap: wrap; }
+.frise-avant { color: var(--txt2); font-size: .8rem; margin-right: .15rem; }
+.pastille {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--line-forte);
+}
+.constat.priorite .pastille.pleine { background: var(--priorite); border-color: var(--priorite); }
+.constat.corriger .pastille.pleine { background: var(--attention); border-color: var(--attention); }
+.constat.bon .pastille.pleine { background: var(--bon); border-color: var(--bon); }
+
+.plan {
+  border: 1px solid var(--primaire); background: var(--primaire-clair);
+  border-radius: var(--radius-s); padding: 1rem 1.1rem; margin-top: 1.5rem;
+}
+.plan h3 { margin-bottom: .5rem; color: var(--primaire-fonce); }
+.plan ol { margin: 0; padding-left: 1.2rem; font-size: .93rem; }
+.plan li { margin-bottom: .5rem; }

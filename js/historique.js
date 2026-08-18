@@ -369,3 +369,88 @@ export function commenterEvolution(points, mesure) {
     ? `Tu te rapproches de la zone visée : ${fmt(premier)} → ${fmt(dernier)}.`
     : `Tu t'en éloignes : ${fmt(premier)} → ${fmt(dernier)}.`;
 }
+
+/* ------------------------------------------------------------------ */
+/* Bilan : ce que disent toutes les séances mises bout à bout          */
+/* ------------------------------------------------------------------ */
+
+/** Un même défaut d'une séance à l'autre, c'est le même coup et le même titre. */
+const cleConstat = (c) => `${c.coup || ''}|${c.titre}`;
+
+/**
+ * Croise les constats de toutes les analyses enregistrées.
+ *
+ * L'intérêt n'est pas de rejouer chaque séance mais de répondre à une question que ne
+ * répond aucun onglet existant : qu'est-ce qui revient ? Un défaut vu cinq fois sur cinq
+ * n'a rien à voir avec un défaut vu une fois — et un point fort qui disparaît est une
+ * information au moins aussi utile qu'un défaut qui apparaît.
+ *
+ * Les analyses trop anciennes pour avoir gardé leur détail sont ignorées : on le dit
+ * plutôt que de laisser croire que le bilan porte sur tout l'historique.
+ */
+export function bilanConstats(liste = lireHistorique()) {
+  const seances = liste.filter((e) => e.detail?.constats?.length);
+  const ignorees = liste.length - seances.length;
+  if (!seances.length) return { seances: 0, ignorees, dates: [], items: [] };
+
+  const dates = seances.map((e) => e.date);
+  const derniere = dates.at(-1);
+  const groupes = new Map();
+
+  seances.forEach((e) => {
+    for (const c of e.detail.constats) {
+      if (c.niveau === 'info') continue;         // les informations de détection ne se cumulent pas
+      const cle = cleConstat(c);
+      const g = groupes.get(cle) || {
+        titre: c.titre, coup: c.coup, dates: [], niveaux: [], dernierDetail: '', exo: '',
+      };
+      g.dates.push(e.date);
+      g.niveaux.push(c.niveau);
+      g.dernierDetail = c.detail || g.dernierDetail;
+      g.exo = c.exo || g.exo;
+      groupes.set(cle, g);
+    }
+  });
+
+  const items = [...groupes.values()].map((g) => {
+    const bon = g.niveaux.at(-1) === 'bon';
+    const presentDerniere = g.dates.at(-1) === derniere;
+    const occurrences = g.dates.length;
+
+    let statut;
+    if (bon) {
+      if (!presentDerniere) statut = 'perdu';
+      else statut = occurrences >= 2 ? 'acquis' : 'nouveau-fort';
+    } else if (!presentDerniere) {
+      statut = 'regle';
+    } else {
+      statut = occurrences >= 2 ? 'recurrent' : 'nouveau';
+    }
+
+    return {
+      titre: g.titre,
+      coup: g.coup,
+      detail: g.dernierDetail,
+      exo: g.exo,
+      // Le pire niveau atteint : un défaut passé en priorité une fois mérite d'être vu comme tel
+      niveau: g.niveaux.includes('priorite') ? 'priorite' : g.niveaux.at(-1),
+      bon,
+      statut,
+      occurrences,
+      dates: g.dates,
+      presence: dates.map((d) => g.dates.includes(d)),
+      premiere: g.dates[0],
+      derniereVue: g.dates.at(-1),
+    };
+  });
+
+  // Du plus tenace au plus anecdotique : c'est l'ordre dans lequel on veut travailler.
+  const rang = { recurrent: 0, nouveau: 1, regle: 2, perdu: 3, acquis: 4, 'nouveau-fort': 5 };
+  items.sort((a, b) =>
+    (rang[a.statut] - rang[b.statut])
+    || (b.occurrences - a.occurrences)
+    || (a.niveau === 'priorite' ? -1 : b.niveau === 'priorite' ? 1 : 0)
+    || a.titre.localeCompare(b.titre));
+
+  return { seances: seances.length, ignorees, dates, items };
+}

@@ -14,7 +14,7 @@ import { analyserAvecClaude, poserQuestion } from './ai.js';
 import {
   enregistrer, lireHistorique, supprimer, toutEffacer, coupsPresents,
   serie, tracerCourbe, commenterEvolution, MESURES_SUIVIES,
-  lireAnalyse, estRouvrable, actualiserResultats,
+  lireAnalyse, estRouvrable, actualiserResultats, bilanConstats,
 } from './historique.js';
 
 /**
@@ -265,6 +265,7 @@ function afficherResultats(a) {
   rendreSynthese(a);
   rendreCoups(a);
   rendreMesures(a);
+  rendreBilan();
   rendreProgression();
   rendreFondamentaux($('#vue-fondamentaux'));
   rendreSuggestions();
@@ -745,7 +746,48 @@ function rendreProgression() {
     dessiner();
   }
 
-  // Liste des séances : c'est d'ici qu'on rouvre une analyse passée, ou qu'on l'efface
+}
+
+/* ------------------------------------------------------------------ */
+/* Bilan : ce qui revient sur l'ensemble des séances                   */
+/* ------------------------------------------------------------------ */
+
+const STATUTS = {
+  recurrent:      { titre: 'Ça revient à chaque fois', classe: 'priorite',
+                    aide: "Ce sont tes vrais chantiers : le même défaut sur plusieurs séances n'est pas un accident, c'est une habitude." },
+  nouveau:        { titre: 'Apparu sur ta dernière séance', classe: 'corriger',
+                    aide: "Vu une seule fois pour l'instant. À confirmer sur la prochaine vidéo avant d'en faire une priorité." },
+  regle:          { titre: 'Ce que tu as réglé', classe: 'bon',
+                    aide: "Présent avant, absent de ta dernière séance. C'est le signe que ton travail paie." },
+  perdu:          { titre: 'Points forts perdus de vue', classe: 'corriger',
+                    aide: "C'était acquis, ça ne l'est plus sur la dernière vidéo. À surveiller." },
+  acquis:         { titre: 'Tes points forts réguliers', classe: 'bon',
+                    aide: "Solide d'une séance à l'autre : c'est sur ça que tu peux t'appuyer." },
+  'nouveau-fort': { titre: 'Nouveaux points forts', classe: 'bon',
+                    aide: "Bon sur ta dernière séance. À confirmer." },
+};
+
+/** Une pastille par séance : pleine quand le constat était présent ce jour-là. */
+function frisePresence(presence, dates) {
+  const max = 14;                       // au-delà, on ne montre que les séances récentes
+  const debut = Math.max(0, presence.length - max);
+  const frise = el('div', 'frise');
+  frise.setAttribute('aria-hidden', 'true');
+  presence.slice(debut).forEach((present, i) => {
+    const point = el('span', `pastille ${present ? 'pleine' : ''}`);
+    point.title = `${dateCompacte(dates[debut + i])} — ${present ? 'présent' : 'absent'}`;
+    frise.appendChild(point);
+  });
+  if (debut > 0) frise.prepend(el('span', 'frise-avant', '…'));
+  return frise;
+}
+
+/**
+ * Liste des séances enregistrées : c'est d'ici qu'on rouvre une analyse passée ou qu'on l'efface.
+ * Elle vit dans le Bilan, qui est la vue « toutes mes séances » ; la Progression, elle,
+ * ne s'occupe que d'une mesure au fil du temps.
+ */
+function rendreJournal(vue, liste) {
   vue.appendChild(el('h3', null, 'Tes analyses'));
   const journal = el('div', 'journal');
 
@@ -776,6 +818,7 @@ function rendreProgression() {
       if (!confirm('Supprimer cette analyse ?')) return;
       supprimer(e.id);
       if (etat.idHistorique === e.id) { etat.idHistorique = null; etat.analyse = null; majOnglets(false); }
+      rendreBilan();
       rendreProgression();
     });
     actions.appendChild(suppr);
@@ -789,10 +832,85 @@ function rendreProgression() {
   effacer.addEventListener('click', () => {
     if (confirm('Effacer définitivement toutes tes analyses enregistrées sur cet appareil ?')) {
       toutEffacer();
+      rendreBilan();
       rendreProgression();
     }
   });
   vue.appendChild(effacer);
+}
+
+function rendreBilan() {
+  const vue = $('#vue-bilan');
+  vue.innerHTML = '';
+  const { seances, ignorees, dates, items } = bilanConstats();
+
+  if (!seances) {
+    vue.appendChild(el('p', 'note',
+      "Le bilan croise les constats de toutes tes séances pour montrer ce qui revient. " +
+      "Il se remplit dès ta première analyse."));
+    return;
+  }
+
+  vue.appendChild(el('p', null,
+    `Sur <strong>${seances} séance${seances > 1 ? 's' : ''}</strong> analysée${seances > 1 ? 's' : ''}, ` +
+    `voici ce qui revient, ce que tu as réglé, et ce sur quoi tu peux compter.`));
+  if (seances < 2) {
+    vue.appendChild(el('p', 'note',
+      "Avec une seule séance, il n'y a encore rien à croiser : refilme-toi dans quelques jours " +
+      "et cet onglet te dira ce qui persiste et ce qui a bougé."));
+  }
+  if (ignorees > 0) {
+    vue.appendChild(el('p', 'note',
+      `${ignorees} analyse(s) plus ancienne(s) ne sont pas comptées ici : leur détail n'a pas été conservé.`));
+  }
+
+  for (const [statut, def] of Object.entries(STATUTS)) {
+    const liste = items.filter((i) => i.statut === statut);
+    if (!liste.length) continue;
+
+    const bloc = el('section', 'bloc-bilan');
+    bloc.appendChild(el('h3', null, `${echapper(def.titre)} <span class="compte">${liste.length}</span>`));
+    bloc.appendChild(el('p', 'note', echapper(def.aide)));
+
+    for (const it of liste) {
+      const carte = el('div', `constat ${def.classe}`);
+      const badge = it.coup ? `<span class="badge">${echapper(it.coup)}</span>` : '';
+      carte.appendChild(el('h4', null, `${echapper(it.titre)}${badge}`));
+
+      const compte = el('p', 'bilan-compte');
+      compte.innerHTML = seances > 1
+        ? `Vu sur <strong>${it.occurrences} séance${it.occurrences > 1 ? 's' : ''} sur ${seances}</strong>` +
+          (it.statut === 'regle' || it.statut === 'perdu'
+            ? ` — la dernière fois le ${echapper(dateCompacte(it.derniereVue))}.`
+            : ` — depuis le ${echapper(dateCompacte(it.premiere))}.`)
+        : 'Vu sur ta séance.';
+      carte.appendChild(compte);
+      if (seances > 1) carte.appendChild(frisePresence(it.presence, dates));
+
+      if (it.detail) carte.appendChild(el('p', null, echapper(it.detail)));
+      if (it.exo && !it.bon) carte.appendChild(el('p', 'exo', `<strong>Exercice :</strong> ${echapper(it.exo)}`));
+      const v = videoConstat(it.titre);
+      if (v && !it.bon && it.statut !== 'regle') {
+        carte.appendChild(lienVideo(v.requete, 'Voir des vidéos sur ce point'));
+      }
+      bloc.appendChild(carte);
+    }
+    vue.appendChild(bloc);
+  }
+
+  rendreJournal(vue, lireHistorique());
+
+  const prioritaires = items.filter((i) => i.statut === 'recurrent').slice(0, 3);
+  if (prioritaires.length) {
+    const plan = el('div', 'plan');
+    plan.appendChild(el('h3', null, prioritaires.length > 1
+      ? `Si tu ne dois travailler que ${prioritaires.length === 2 ? 'deux' : 'trois'} choses`
+      : 'Si tu ne dois travailler qu\'une chose'));
+    plan.appendChild(el('ol', null, prioritaires
+      .map((i) => `<li><strong>${echapper(i.titre)}</strong>${i.coup ? ` (${echapper(i.coup)})` : ''}` +
+        `${i.exo ? ` — ${echapper(i.exo)}` : ''}</li>`).join('')));
+    vue.appendChild(plan);
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -967,8 +1085,8 @@ function allerA(destination) {
     $('#etape-import').hidden = false;
   } else {
     ouvrirSectionResultats(etat.analyse ? '2. Résultats' : 'Ton espace');
-    ouvrirOnglet({ analyses: 'progression', question: 'ia', fiches: 'fondamentaux' }[destination]);
-    if (destination === 'analyses') rendreProgression();
+    ouvrirOnglet({ analyses: 'bilan', question: 'ia', fiches: 'fondamentaux' }[destination]);
+    if (destination === 'analyses') { rendreBilan(); rendreProgression(); }
     if (destination === 'fiches') rendreFondamentaux($('#vue-fondamentaux'));
   }
   $(cible)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1091,6 +1209,7 @@ $('#btn-ia').addEventListener('click', async () => {
       apiKey: cle,
       analyse: etat.analyse,
       images: imagesClefs(etat.analyse),
+      bilan: bilanConstats(),
       avecWeb: $('#ia-web').checked,
       onStatut: (m) => { statut.textContent = m; },
     });
@@ -1200,6 +1319,7 @@ async function envoyerQuestion() {
       apiKey: champParCle(),
       conversation: etat.conversation,
       analyse: etat.analyse,
+      bilan: bilanConstats(),
       question,
       avecWeb: $('#ia-web').checked,
     });
@@ -1237,6 +1357,7 @@ $('#opt-prise').innerHTML = PRISES
   .map((p) => `<option value="${echapper(p.code)}">${echapper(p.libelle)}</option>`).join('');
 
 rendreFondamentaux($('#vue-fondamentaux'));
+rendreBilan();
 rendreProgression();
 rendreSuggestions();
 majOnglets(false);
@@ -1244,4 +1365,8 @@ majOnglets(false);
 // Au démarrage, tous les onglets sont là. On ouvre celui qui a quelque chose à montrer :
 // le suivi si des analyses existent, les fiches sinon.
 ouvrirSectionResultats('Ton espace');
-ouvrirOnglet(lireHistorique().length ? 'progression' : 'fondamentaux');
+const avecHistorique = lireHistorique().length > 0;
+ouvrirOnglet(avecHistorique ? 'bilan' : 'fondamentaux');
+document.querySelectorAll('.menu-item').forEach((b) => {
+  b.classList.toggle('actif', b.dataset.aller === (avecHistorique ? 'analyses' : 'video'));
+});

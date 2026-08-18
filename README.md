@@ -16,8 +16,8 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
 4. **Frappe par frappe**, chaque mesure est jugée : ce qui va, ce qui ne va pas, et pourquoi.
 5. Chaque mesure est **expliquée** : ce qu'elle regarde, pourquoi ça compte, quoi faire si tu es hors zone.
 6. Tu peux dire où chaque balle est partie : l'app compare alors tes réussites à tes fautes.
-7. Chaque analyse est enregistrée et **rouvrable** : le menu **Mes analyses** te rend une séance passée
-   dans tous ses onglets, avec la courbe d'évolution.
+7. L'onglet **Bilan** croise toutes tes séances : ce qui revient à chaque fois, ce que tu as réglé,
+   ce sur quoi tu peux compter — et la liste de tes analyses, rouvrables dans tous leurs onglets.
 8. Un **entraîneur IA** répond à tes questions en connaissant tes mesures, sans avoir à lancer
    l'analyse complète au préalable.
 
@@ -57,6 +57,12 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
     et remonte ce qui se fait de mieux au moment du clic.
 14. **Menu** en quatre entrées (Analyser / Mes analyses / Questions / Apprendre), visibles sans
     défilement même sur un petit écran.
+15. **Bilan sur toutes les séances** : les constats sont regroupés par titre et par coup, puis classés
+    en *récurrent* (présent sur la dernière séance et vu au moins deux fois), *nouveau*, *réglé*
+    (présent avant, absent de la dernière), *point fort acquis* et *point fort perdu de vue*. Chaque
+    entrée porte une frise d'une pastille par séance, un compteur « vu sur N séances sur M », et les
+    trois chantiers les plus tenaces sont repris en plan de travail. Ce même historique est transmis
+    à l'entraîneur IA : un défaut persistant malgré le travail n'appelle pas le conseil habituel.
 
 ## Utilisation
 
@@ -121,7 +127,7 @@ css/styles.css      Thème clair, contrastes AA, responsive
 js/pose.js          Chargement MediaPipe, échantillonnage vidéo, géométrie
 js/analyse.js       Séries temporelles, détection de frappes, mesures, moteur de règles
 js/knowledge.js     Référentiel technique, seuils de coaching, explications des mesures, vidéos
-js/historique.js    Suivi dans le temps (localStorage), réouverture d'une analyse, courbe d'évolution
+js/historique.js    Suivi dans le temps (localStorage), réouverture d'une analyse, courbe, bilan croisé
 js/ai.js            Appel API Claude (vision + recherche web)
 js/app.js           Interface, menu, rendu, verdicts, squelette, onglets
 ```

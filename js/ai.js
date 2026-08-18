@@ -92,7 +92,27 @@ function resultatsBalles(analyse) {
   ].join('\n');
 }
 
-function construirePrompt({ analyse, avecWeb, nbImages }) {
+/**
+ * Ce qui revient d'une séance à l'autre. Un défaut vu cinq fois sur cinq n'appelle pas
+ * le même conseil qu'un défaut vu une fois : l'entraîneur doit le savoir.
+ */
+function historiqueRecurrent(bilan) {
+  if (!bilan || bilan.seances < 2) return null;
+  const tenaces = bilan.items.filter((i) => i.statut === 'recurrent').slice(0, 5);
+  const regles = bilan.items.filter((i) => i.statut === 'regle').slice(0, 4);
+  if (!tenaces.length && !regles.length) return null;
+
+  return [
+    `Historique du joueur sur ${bilan.seances} séances filmées :`,
+    ...tenaces.map((i) => `- PERSISTANT (${i.occurrences}/${bilan.seances} séances) : ${i.titre}${i.coup ? ` [${i.coup}]` : ''}`),
+    ...regles.map((i) => `- CORRIGÉ depuis (vu ${i.occurrences} fois, absent de la dernière) : ${i.titre}${i.coup ? ` [${i.coup}]` : ''}`),
+    `Insiste sur ce qui persiste malgré le travail : c'est là que le conseil habituel n'a pas suffi. ` +
+    `Reconnais explicitement ce qui a été corrigé.`,
+    ``,
+  ].join('\n');
+}
+
+function construirePrompt({ analyse, avecWeb, nbImages, bilan = null }) {
   const p = analyse.profil || {};
 
   const groupes = analyse.groupes.map((g) => {
@@ -141,6 +161,7 @@ function construirePrompt({ analyse, avecWeb, nbImages }) {
     groupes || '- (aucun coup identifié)',
     ``,
     resultatsBalles(analyse),
+    historiqueRecurrent(bilan),
     `Défauts relevés par le moteur de règles :`,
     constats,
     ``,
@@ -184,7 +205,7 @@ async function appeler({ apiKey, corps }) {
  * @returns {Promise<{texte: string, sources: Array, usage: object}>}
  */
 export async function analyserAvecClaude({
-  apiKey, analyse, images, avecWeb = true, onStatut = () => {},
+  apiKey, analyse, images, bilan = null, avecWeb = true, onStatut = () => {},
 }) {
   if (!apiKey) throw new Error('Clé API manquante.');
 
@@ -198,7 +219,7 @@ export async function analyserAvecClaude({
   });
   contenu.push({
     type: 'text',
-    text: construirePrompt({ analyse, avecWeb, nbImages: images.length }),
+    text: construirePrompt({ analyse, avecWeb, bilan, nbImages: images.length }),
   });
 
   const messages = [{ role: 'user', content: contenu }];
@@ -223,7 +244,7 @@ export async function analyserAvecClaude({
  * @param {{apiKey: string, conversation: Array, question: string, avecWeb: boolean, onStatut: Function}} opts
  */
 export async function poserQuestion({
-  apiKey, conversation, question, analyse = null, avecWeb = true, onStatut = () => {},
+  apiKey, conversation, question, analyse = null, bilan = null, avecWeb = true, onStatut = () => {},
 }) {
   if (!apiKey) throw new Error('Clé API manquante.');
   if (!question?.trim()) throw new Error('Question vide.');
@@ -237,7 +258,7 @@ export async function poserQuestion({
     }
     conversation = [{
       role: 'user',
-      content: [{ type: 'text', text: construirePrompt({ analyse, avecWeb, nbImages: 0 }) }],
+      content: [{ type: 'text', text: construirePrompt({ analyse, avecWeb, bilan, nbImages: 0 }) }],
     }, {
       role: 'assistant',
       content: [{ type: 'text', text: 'Mesures et profil bien reçus. Je réponds aux questions du joueur.' }],
