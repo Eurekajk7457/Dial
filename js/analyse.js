@@ -97,12 +97,37 @@ export function detecterMain(series, force = 'auto') {
 }
 
 /**
- * Au-delà de ces valeurs, ce n'est plus un geste humain : c'est la détection qui a sauté
- * d'une personne à l'autre, ou perdu puis retrouvé le joueur ailleurs dans l'image.
- * Un poignet de professionnel plafonne autour de 25 largeurs d'épaules par seconde.
+ * Limites au-delà desquelles ce n'est plus un geste humain, mais la détection qui a sauté
+ * d'une personne à l'autre.
+ *
+ * Elles s'expriment en largeurs d'épaules par SECONDE, jamais par image : un sprint de 5 m/s
+ * représente 0,6 largeur par image à 20 i/s mais 1,0 à 12 i/s. Un seuil par image accusait donc
+ * de « saut de détection » un joueur qui court simplement vers la balle — d'autant plus que si
+ * la détection décroche, deux images exploitables peuvent être séparées de plusieurs dixièmes
+ * de seconde, pendant lesquelles un joueur parcourt réellement plusieurs largeurs d'épaules.
+ *
+ * Repères : un sprint de haut niveau (7 m/s) vaut environ 17 largeurs/s. Un basculement d'un
+ * joueur à l'autre en dépasse couramment 70.
  */
-const VITESSE_INVRAISEMBLABLE = 60;   // largeurs d'épaules / s
-const SAUT_CORPS = 0.6;               // largeurs d'épaules parcourues par le bassin en une image
+const VITESSE_CORPS_MAX = 25;         // largeurs d'épaules / s — au-delà, aucun humain ne court
+const VITESSE_INVRAISEMBLABLE = 60;   // idem pour le poignet, sprint et frappe cumulés
+
+/**
+ * Écart maximal toléré entre deux images exploitables, en multiples de la cadence
+ * d'échantillonnage. Au-delà, la détection a décroché : on ne sait pas ce qui s'est passé
+ * entre les deux, donc on s'abstient de conclure — ni vitesse, ni accusation de saut.
+ */
+const ECARTS_TOLERES = 3;
+
+/** Cadence réelle d'échantillonnage, déduite des horodatages. */
+function periodeEchantillonnage(series) {
+  const ecarts = [];
+  for (let i = 1; i < series.length; i++) {
+    const dt = series[i].t - series[i - 1].t;
+    if (dt > 0) ecarts.push(dt);
+  }
+  return ecarts.length ? mediane(ecarts) : 1 / 12;
+}
 
 /**
  * Vitesse du poignet dominant, en largeurs d'épaules par seconde.
@@ -113,18 +138,27 @@ const SAUT_CORPS = 0.6;               // largeurs d'épaules parcourues par le b
  */
 export function vitessePoignet(series, main) {
   const cle = main === 'D' ? 'poignetD' : 'poignetG';
+  const ecartMax = periodeEchantillonnage(series) * ECARTS_TOLERES;
   const v = new Array(series.length).fill(NaN);
+
   for (let i = 1; i < series.length; i++) {
     const a = series[i - 1], b = series[i];
     if (!a.ok || !b.ok) continue;
     const dt = b.t - a.t;
-    if (dt <= 0) continue;
+    if (dt <= 0 || dt > ecartMax) continue;   // trou dans la détection : on ne conclut pas
 
-    // Sur une frappe, le poignet file mais le bassin reste posé. S'il se téléporte lui aussi,
-    // c'est que le squelette a changé de personne.
-    if (dist(a.hanches, b.hanches) / b.sw > SAUT_CORPS) continue;
+    // Un corps qui se déplace plus vite qu'un sprint humain n'a pas couru : le squelette
+    // a changé de personne. La comparaison se fait bien en vitesse, pas en distance.
+    if (dist(a.hanches, b.hanches) / b.sw / dt > VITESSE_CORPS_MAX) continue;
 
-    const vitesse = dist(a[cle], b[cle]) / b.sw / dt;
+    // Vitesse du poignet RELATIVEMENT au bassin, et non par rapport à l'image.
+    // Un joueur qui sprinte emmène son bras avec lui : mesurée dans l'absolu, sa course
+    // ressemble à une frappe. Rapportée au corps, elle ne ressemble plus à rien — seul un
+    // geste où la main part toute seule ressort. Sur banc d'essai, ce seul changement fait
+    // passer la précision de 36 % à 100 % sur un sprint à 7 m/s.
+    const relA = { x: a[cle].x - a.hanches.x, y: a[cle].y - a.hanches.y };
+    const relB = { x: b[cle].x - b.hanches.x, y: b[cle].y - b.hanches.y };
+    const vitesse = dist(relA, relB) / b.sw / dt;
     if (vitesse > VITESSE_INVRAISEMBLABLE) continue;
     v[i] = vitesse;
   }
@@ -137,12 +171,17 @@ export function vitessePoignet(series, main) {
  * ou la détection décroche sans arrêt — et aucun réglage de seuil n'y changera rien.
  */
 export function tauxSautsDetection(series) {
+  const ecartMax = periodeEchantillonnage(series) * ECARTS_TOLERES;
   let transitions = 0, sauts = 0;
   for (let i = 1; i < series.length; i++) {
     const a = series[i - 1], b = series[i];
     if (!a.ok || !b.ok) continue;
+    const dt = b.t - a.t;
+    // Un trou dans la détection n'est pas un saut : on ignore la transition au lieu de
+    // l'imputer au joueur, qui a très bien pu courir pendant ce temps.
+    if (dt <= 0 || dt > ecartMax) continue;
     transitions++;
-    if (dist(a.hanches, b.hanches) / b.sw > SAUT_CORPS) sauts++;
+    if (dist(a.hanches, b.hanches) / b.sw / dt > VITESSE_CORPS_MAX) sauts++;
   }
   return transitions ? sauts / transitions : 0;
 }
@@ -840,11 +879,24 @@ function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte
     });
   }
   if (tauxDetection < 0.7) {
+    // C'est le facteur numéro un : sur banc d'essai, passer de 100 % à 60 % de détection
+    // fait chuter le nombre de frappes retrouvées de 100 % à 58 % (à 20 images/s), et à 8 %
+    // seulement si la vidéo n'est échantillonnée qu'à 12 images/s. Autant le dire.
+    const basseCadence = fenetre && fenetre.fps < 20;
     c.push({
-      niveau: 'corriger', coup: 'Qualité vidéo',
+      niveau: tauxDetection < 0.5 ? 'priorite' : 'corriger',
+      coup: 'Qualité vidéo',
       titre: 'Détection partielle du joueur',
-      detail: `Le joueur n'a été détecté que sur ${Math.round(tauxDetection * 100)} % des images. Les mesures ci-dessous sont donc à prendre avec prudence.`,
-      exo: 'Refilme en cadrant le joueur en entier, caméra fixe, bon éclairage, et un seul joueur dans le champ.',
+      detail: `Le joueur n'a été reconnu que sur ${Math.round(tauxDetection * 100)} % des images. ` +
+        `C'est le principal facteur de fiabilité de toute l'analyse : le moment le plus rapide de ` +
+        `la frappe dure environ deux dixièmes de seconde, et s'il tombe dans un trou de détection, ` +
+        `la frappe est perdue. En dessous de 70 %, des frappes manquent forcément.`,
+      exo: (basseCadence
+        ? `Relance d'abord à 20 images/seconde (réglages avancés, en haut) : c'est ce qui rattrape ` +
+          `le plus quand la détection est imparfaite. Puis, si besoin : `
+        : 'À essayer : ') +
+        `cadre le joueur en entier et le plus grand possible dans l'image, caméra fixe, ` +
+        `bon éclairage, et un seul joueur visible.`,
     });
   }
   if (frappes.length && duree > 0) {

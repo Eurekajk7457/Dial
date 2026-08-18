@@ -51,11 +51,18 @@ export async function chargerDetecteur(onStatut = () => {}) {
       const vision = await FilesetResolver.forVisionTasks(source.wasm);
       detecteur = await PoseLandmarker.createFromOptions(vision, {
         baseOptions: { modelAssetPath: MODELE, delegate: 'GPU' },
-        runningMode: 'IMAGE',
+        // VIDEO plutôt qu'IMAGE : le modèle suit le joueur d'une image à l'autre au lieu de
+        // le rechercher à zéro à chaque fois. Il le retrouve donc beaucoup plus souvent quand
+        // il est petit ou flou, et surtout il reste sur LA MÊME personne — c'est ce qui évite
+        // que le squelette bascule sur l'adversaire au milieu d'un échange.
+        runningMode: 'VIDEO',
         numPoses: 1,
-        minPoseDetectionConfidence: 0.5,
-        minPosePresenceConfidence: 0.5,
-        minTrackingConfidence: 0.5,
+        // Un joueur filmé de loin passe rarement la barre de 0,5 : mieux vaut une détection
+        // hésitante, que les filtres de vitesse écarteront si elle est aberrante, que pas
+        // de détection du tout.
+        minPoseDetectionConfidence: 0.3,
+        minPosePresenceConfidence: 0.3,
+        minTrackingConfidence: 0.3,
       });
       return detecteur;
     } catch (err) {
@@ -112,7 +119,8 @@ export async function echantillonner(video, { debut = 0, duree = 30, fps = 12, o
 
     let pts = null;
     try {
-      const res = det.detect(video);
+      // Les horodatages doivent croître strictement : l'échantillonnage avance dans le temps.
+      const res = det.detectForVideo(video, Math.round(t * 1000));
       if (res?.landmarks?.length) pts = res.landmarks[0];
     } catch {
       pts = null;

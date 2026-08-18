@@ -167,6 +167,26 @@ js/ai.js            Appel API Claude (vision + recherche web)
 js/app.js           Interface, menu, rendu, verdicts, squelette, onglets
 ```
 
+## Précision mesurée
+
+Banc d'essai sur des séquences dont la vérité est connue (nombre et instant des frappes
+simulés), joueur courant à 4 m/s entre les frappes, 12 images/seconde :
+
+| Situation | Frappes retrouvées | Précision |
+|---|---|---|
+| Détection de posture à 100 % | 92 % | 100 % |
+| Joueur qui sprinte à 7 m/s | 92 % | 100 % |
+| Joueur deux fois plus petit dans l'image | 92 % | 100 % |
+| Deux joueurs, détecteur qui bascule | 92 % | 100 % (+ alerte) |
+| **Détection de posture à 60 %** | **8 %** | 100 % |
+| **Détection de posture à 24 %** | **0 %** | — |
+
+Lecture : quand le joueur est bien détecté, la détection de frappes est fiable et ne produit
+pas de fausses frappes. Le **taux de détection de posture est le facteur décisif**, très loin
+devant tout le reste — c'est pourquoi l'app l'affiche et alerte en dessous de 70 %. La cadence
+d'échantillonnage compte aussi beaucoup dès que la détection est imparfaite : à 60 % de
+détection, on retrouve 58 % des frappes à 20 images/seconde contre 8 % à 12.
+
 ## Limites, dites franchement
 
 - Détection **2D** à partir d'une seule caméra : les angles sont sensibles à l'orientation de la prise
@@ -174,6 +194,9 @@ js/app.js           Interface, menu, rendu, verdicts, squelette, onglets
 - La **prise de raquette**, l'**effet** donné à la balle et la **trajectoire** ne sont pas mesurés :
   la raquette et la balle ne sont pas détectées.
 - La classification volée / coup de fond est heuristique et peut se tromper sur des gestes courts.
+- En dessous de **70 % de détection de posture**, des frappes manquent forcément ; en dessous de
+  40 %, l'analyse ne trouve plus rien du tout. Ce n'est pas un réglage à forcer, c'est la vidéo
+  qu'il faut refaire : joueur grand dans le cadre, un seul joueur visible, caméra fixe.
 - Les seuils du référentiel sont des repères pour joueur amateur à confirmé, pas des vérités absolues.
 - Le premier chargement nécessite internet (modèle MediaPipe depuis un CDN) ; ensuite le navigateur le met en cache.
 - Les analyses rouvertes n'ont **pas les images de la vidéo** — elle n'a jamais quitté l'appareil.

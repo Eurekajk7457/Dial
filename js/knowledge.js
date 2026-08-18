@@ -319,9 +319,9 @@ export const EXPLICATIONS = [
   },
   {
     cle: 'vitesse', seuil: null, decimales: 1, unite: '',
-    libelle: "Vitesse de la main au moment fort",
-    echelle: 'en largeurs d\'épaules par seconde — un repère relatif, pas des km/h',
-    quoi: "La vitesse maximale de ton poignet pendant le coup.",
+    libelle: "Vitesse de la main par rapport au corps",
+    echelle: "en largeurs d'épaules par seconde, main mesurée par rapport au bassin — un repère relatif, pas des km/h",
+    quoi: "La vitesse maximale de ton poignet pendant le coup, mesurée par rapport à ton bassin — ce qui compte, c'est que la main parte toute seule, pas que tout le corps avance.",
     pourquoi: "Elle sert surtout à comparer tes frappes entre elles : une frappe nettement plus lente que les " +
       "autres est souvent une frappe subie, en retard. Il n'y a pas de bonne valeur absolue.",
     exercice: "Compare cette valeur d'une frappe à l'autre dans l'onglet « Coups détectés » plutôt qu'à une référence.",
