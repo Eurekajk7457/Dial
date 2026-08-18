@@ -602,6 +602,20 @@ details.ia-config > summary { cursor: pointer; color: var(--txt2); font-size: .9
 .deja-vue .note { margin-bottom: .8rem; }
 .deja-vue .actions { gap: .5rem; }
 .deja-vue button { min-height: 40px; padding: .5rem 1rem; font-size: .9rem; }
+
+/* ---------- Transfert vers un autre téléphone ---------- */
+
+details.transfert {
+  margin-top: 1.4rem; border: 1px solid var(--line);
+  border-radius: var(--radius-s); background: var(--surface-2); padding: .7rem .9rem;
+}
+details.transfert > summary {
+  cursor: pointer; color: var(--txt); font-size: .92rem; font-weight: 600;
+  min-height: var(--touche); padding: .6rem 0;
+}
+details.transfert .actions { margin-bottom: .6rem; }
+details.transfert button { min-height: 40px; padding: .5rem 1rem; font-size: .9rem; }
+details.transfert p:last-child:empty { display: none; }
 </style>
 </head>
 <body>
@@ -2861,6 +2875,68 @@ function trouverParEmpreinte(empreinte, liste = lireHistorique()) {
   return [...liste].reverse().find((e) => e.empreinte === empreinte) || null;
 }
 
+/* ------------------------------------------------------------------ */
+/* Transfert d'un téléphone à l'autre                                  */
+/* ------------------------------------------------------------------ */
+
+const FORMAT_SAUVEGARDE = 1;
+
+/**
+ * Sauvegarde complète, à transférer sur un autre appareil.
+ *
+ * L'app n'a pas de compte et pas de serveur : l'historique vit dans le navigateur de
+ * chaque téléphone. Un fichier reste donc la seule façon honnête de le déplacer sans
+ * envoyer quoi que ce soit sur internet — et il sert aussi de sauvegarde, ce que le
+ * `localStorage` seul ne garantit pas (vider son navigateur l'efface).
+ */
+function exporterHistorique(liste = lireHistorique()) {
+  return {
+    format: FORMAT_SAUVEGARDE,
+    app: 'Cadence',
+    exporteLe: new Date().toISOString(),
+    analyses: liste,
+  };
+}
+
+/**
+ * Fusionne une sauvegarde avec l'historique local.
+ *
+ * On fusionne au lieu de remplacer : deux téléphones qui s'échangent leurs fichiers doivent
+ * finir avec la même chose, sans que l'un écrase le travail de l'autre. L'identifiant d'une
+ * analyse est unique et stable, il suffit à reconnaître ce qui est déjà là.
+ */
+function importerHistorique(donnees) {
+  if (!donnees || typeof donnees !== 'object') {
+    throw new Error("Ce fichier n'est pas une sauvegarde Cadence.");
+  }
+  const entrantes = donnees.analyses ?? (Array.isArray(donnees) ? donnees : null);
+  if (!Array.isArray(entrantes)) {
+    throw new Error("Ce fichier ne contient aucune analyse — as-tu bien choisi le bon fichier ?");
+  }
+  if (donnees.format && donnees.format > FORMAT_SAUVEGARDE) {
+    throw new Error('Cette sauvegarde vient d\'une version plus récente de l\'app. Mets-la à jour sur ce téléphone.');
+  }
+
+  const valides = entrantes.filter((e) => e && typeof e.id === 'string' && typeof e.date === 'string');
+  const ignorees = entrantes.length - valides.length;
+
+  const locale = lireHistorique();
+  const connues = new Set(locale.map((e) => e.id));
+  const ajoutees = valides.filter((e) => !connues.has(e.id));
+
+  const fusion = [...locale, ...ajoutees]
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const ecrit = ecrire(fusion);
+  return {
+    ajoutees: ajoutees.length,
+    dejaPresentes: valides.length - ajoutees.length,
+    ignorees,
+    total: Math.min(fusion.length, MAX_ENTREES),
+    ecrit,
+  };
+}
+
 /* ===== js/ai.js ===== */
 /**
  * Analyse approfondie facultative via l'API Claude (Anthropic), appelée directement
@@ -4120,6 +4196,84 @@ function rendreJournal(vue, liste) {
     }
   });
   vue.appendChild(effacer);
+  rendreTransfert(vue);
+}
+
+/**
+ * Transfert d'un téléphone à l'autre. L'app n'ayant ni compte ni serveur, l'historique
+ * vit dans le navigateur de chaque appareil : un fichier reste la seule façon de le
+ * déplacer sans rien envoyer sur internet. Il sert aussi de sauvegarde — vider son
+ * navigateur efface tout, et personne ne s'y attend.
+ */
+function rendreTransfert(vue) {
+  const bloc = el('details', 'transfert');
+  bloc.innerHTML = '<summary>Retrouver ces analyses sur un autre téléphone</summary>';
+
+  bloc.appendChild(el('p', 'note',
+    "Tes analyses sont enregistrées dans le navigateur de cet appareil, et nulle part ailleurs : " +
+    "il n'y a ni compte ni serveur, donc rien ne circule sur internet. Pour les avoir sur un " +
+    "deuxième téléphone, exporte-les ici, envoie-toi le fichier (mail, AirDrop, cloud), et " +
+    "importe-le là-bas. C'est aussi ta sauvegarde : vider ton navigateur effacerait tout."));
+
+  const actions = el('div', 'actions');
+
+  const btnExport = el('button', 'primary', 'Exporter mes analyses');
+  btnExport.type = 'button';
+  btnExport.addEventListener('click', () => {
+    const liste = lireHistorique();
+    if (!liste.length) { retour.textContent = "Il n'y a encore rien à exporter."; return; }
+    const blob = new Blob([JSON.stringify(exporterHistorique(liste))], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const lien = document.createElement('a');
+    lien.href = url;
+    lien.download = `${NOM_APP.toLowerCase()}-analyses-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(lien);
+    lien.click();
+    lien.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    retour.className = 'note';
+    retour.textContent = `${liste.length} analyse(s) exportée(s). Envoie-toi ce fichier, puis importe-le sur l'autre téléphone.`;
+  });
+
+  const champ = el('input');
+  champ.type = 'file';
+  champ.accept = 'application/json,.json';
+  champ.hidden = true;
+
+  const btnImport = el('button', 'ghost', 'Importer un fichier');
+  btnImport.type = 'button';
+  btnImport.addEventListener('click', () => champ.click());
+
+  champ.addEventListener('change', async () => {
+    const fichier = champ.files?.[0];
+    champ.value = '';
+    if (!fichier) return;
+    try {
+      const bilan = importerHistorique(JSON.parse(await fichier.text()));
+      retour.className = 'note';
+      retour.textContent = bilan.ajoutees
+        ? `${bilan.ajoutees} analyse(s) ajoutée(s)` +
+          (bilan.dejaPresentes ? `, ${bilan.dejaPresentes} déjà présente(s)` : '') +
+          `. Tu en as maintenant ${bilan.total}.`
+        : `Rien de nouveau : ces ${bilan.dejaPresentes} analyse(s) étaient déjà sur ce téléphone.`;
+      if (!bilan.ecrit) {
+        retour.className = 'erreur';
+        retour.textContent = "Le navigateur a refusé d'enregistrer : la mémoire est pleine. Supprime quelques analyses et réessaie.";
+      }
+      rendreBilan();
+      rendreProgression();
+    } catch (e) {
+      retour.className = 'erreur';
+      retour.textContent = e.message || String(e);
+    }
+  });
+
+  actions.append(btnExport, btnImport, champ);
+  bloc.appendChild(actions);
+
+  const retour = el('p', 'note');
+  bloc.appendChild(retour);
+  vue.appendChild(bloc);
 }
 
 function rendreBilan() {

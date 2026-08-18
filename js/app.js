@@ -15,6 +15,7 @@ import {
   enregistrer, lireHistorique, supprimer, toutEffacer, coupsPresents,
   serie, tracerCourbe, commenterEvolution, MESURES_SUIVIES,
   lireAnalyse, estRouvrable, actualiserResultats, bilanConstats,
+  exporterHistorique, importerHistorique,
   empreinteFichier, trouverParEmpreinte,
 } from './historique.js';
 
@@ -933,6 +934,84 @@ function rendreJournal(vue, liste) {
     }
   });
   vue.appendChild(effacer);
+  rendreTransfert(vue);
+}
+
+/**
+ * Transfert d'un téléphone à l'autre. L'app n'ayant ni compte ni serveur, l'historique
+ * vit dans le navigateur de chaque appareil : un fichier reste la seule façon de le
+ * déplacer sans rien envoyer sur internet. Il sert aussi de sauvegarde — vider son
+ * navigateur efface tout, et personne ne s'y attend.
+ */
+function rendreTransfert(vue) {
+  const bloc = el('details', 'transfert');
+  bloc.innerHTML = '<summary>Retrouver ces analyses sur un autre téléphone</summary>';
+
+  bloc.appendChild(el('p', 'note',
+    "Tes analyses sont enregistrées dans le navigateur de cet appareil, et nulle part ailleurs : " +
+    "il n'y a ni compte ni serveur, donc rien ne circule sur internet. Pour les avoir sur un " +
+    "deuxième téléphone, exporte-les ici, envoie-toi le fichier (mail, AirDrop, cloud), et " +
+    "importe-le là-bas. C'est aussi ta sauvegarde : vider ton navigateur effacerait tout."));
+
+  const actions = el('div', 'actions');
+
+  const btnExport = el('button', 'primary', 'Exporter mes analyses');
+  btnExport.type = 'button';
+  btnExport.addEventListener('click', () => {
+    const liste = lireHistorique();
+    if (!liste.length) { retour.textContent = "Il n'y a encore rien à exporter."; return; }
+    const blob = new Blob([JSON.stringify(exporterHistorique(liste))], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const lien = document.createElement('a');
+    lien.href = url;
+    lien.download = `${NOM_APP.toLowerCase()}-analyses-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(lien);
+    lien.click();
+    lien.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    retour.className = 'note';
+    retour.textContent = `${liste.length} analyse(s) exportée(s). Envoie-toi ce fichier, puis importe-le sur l'autre téléphone.`;
+  });
+
+  const champ = el('input');
+  champ.type = 'file';
+  champ.accept = 'application/json,.json';
+  champ.hidden = true;
+
+  const btnImport = el('button', 'ghost', 'Importer un fichier');
+  btnImport.type = 'button';
+  btnImport.addEventListener('click', () => champ.click());
+
+  champ.addEventListener('change', async () => {
+    const fichier = champ.files?.[0];
+    champ.value = '';
+    if (!fichier) return;
+    try {
+      const bilan = importerHistorique(JSON.parse(await fichier.text()));
+      retour.className = 'note';
+      retour.textContent = bilan.ajoutees
+        ? `${bilan.ajoutees} analyse(s) ajoutée(s)` +
+          (bilan.dejaPresentes ? `, ${bilan.dejaPresentes} déjà présente(s)` : '') +
+          `. Tu en as maintenant ${bilan.total}.`
+        : `Rien de nouveau : ces ${bilan.dejaPresentes} analyse(s) étaient déjà sur ce téléphone.`;
+      if (!bilan.ecrit) {
+        retour.className = 'erreur';
+        retour.textContent = "Le navigateur a refusé d'enregistrer : la mémoire est pleine. Supprime quelques analyses et réessaie.";
+      }
+      rendreBilan();
+      rendreProgression();
+    } catch (e) {
+      retour.className = 'erreur';
+      retour.textContent = e.message || String(e);
+    }
+  });
+
+  actions.append(btnExport, btnImport, champ);
+  bloc.appendChild(actions);
+
+  const retour = el('p', 'note');
+  bloc.appendChild(retour);
+  vue.appendChild(bloc);
 }
 
 function rendreBilan() {

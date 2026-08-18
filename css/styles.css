@@ -593,3 +593,17 @@ details.ia-config > summary { cursor: pointer; color: var(--txt2); font-size: .9
 .deja-vue .note { margin-bottom: .8rem; }
 .deja-vue .actions { gap: .5rem; }
 .deja-vue button { min-height: 40px; padding: .5rem 1rem; font-size: .9rem; }
+
+/* ---------- Transfert vers un autre téléphone ---------- */
+
+details.transfert {
+  margin-top: 1.4rem; border: 1px solid var(--line);
+  border-radius: var(--radius-s); background: var(--surface-2); padding: .7rem .9rem;
+}
+details.transfert > summary {
+  cursor: pointer; color: var(--txt); font-size: .92rem; font-weight: 600;
+  min-height: var(--touche); padding: .6rem 0;
+}
+details.transfert .actions { margin-bottom: .6rem; }
+details.transfert button { min-height: 40px; padding: .5rem 1rem; font-size: .9rem; }
+details.transfert p:last-child:empty { display: none; }

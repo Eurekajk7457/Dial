@@ -40,7 +40,8 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
    avec au moins deux frappes de chaque côté.
 8. **Régularité** : écart-type des mesures d'une frappe à l'autre — un geste reproductible compte
    davantage qu'un geste parfait une fois sur cinq.
-9. **Suivi dans le temps** : chaque analyse est résumée dans le `localStorage` ; la vue Progression
+9. **Suivi dans le temps** : chaque analyse est résumée dans le `localStorage` (donc propre à un
+   appareil, transférable par fichier) ; la vue Progression
    trace une mesure au fil des séances, avec la zone visée en fond plutôt qu'une flèche « ça monte ».
 10. **Ralenti** image par image autour de chaque impact, et **export du rapport** en texte, à montrer
     à un entraîneur.
@@ -76,7 +77,13 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
     n'est trouvé, l'app annonce les chiffres réels — images lues, taux de reconnaissance, vitesse
     maximale du poignet contre le seuil requis — et les pistes classées : cadrage, distance, fenêtre
     analysée plus courte que la vidéo, images par seconde trop basses.
-18. **Bilan sur toutes les séances** : les constats sont regroupés par titre et par coup, puis classés
+18. **Transfert d'un téléphone à l'autre** : export de tout l'historique en un fichier JSON,
+    import fusionnant sur l'autre appareil. La fusion se fait par identifiant d'analyse, donc
+    deux téléphones qui s'échangent leurs fichiers convergent sans que l'un écrase l'autre, et
+    réimporter le même fichier n'ajoute rien. Sert aussi de sauvegarde — vider son navigateur
+    efface le `localStorage`, et personne ne s'y attend. Il n'y a **pas** de synchronisation
+    automatique : elle demanderait un compte et un serveur, que cette app n'a pas.
+19. **Bilan sur toutes les séances** : les constats sont regroupés par titre et par coup, puis classés
     en *récurrent* (présent sur la dernière séance et vu au moins deux fois), *nouveau*, *réglé*
     (présent avant, absent de la dernière), *point fort acquis* et *point fort perdu de vue*. Chaque
     entrée porte une frise d'une pastille par séance, un compteur « vu sur N séances sur M », et les

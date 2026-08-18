@@ -502,3 +502,65 @@ export function trouverParEmpreinte(empreinte, liste = lireHistorique()) {
   if (!empreinte) return null;
   return [...liste].reverse().find((e) => e.empreinte === empreinte) || null;
 }
+
+/* ------------------------------------------------------------------ */
+/* Transfert d'un téléphone à l'autre                                  */
+/* ------------------------------------------------------------------ */
+
+const FORMAT_SAUVEGARDE = 1;
+
+/**
+ * Sauvegarde complète, à transférer sur un autre appareil.
+ *
+ * L'app n'a pas de compte et pas de serveur : l'historique vit dans le navigateur de
+ * chaque téléphone. Un fichier reste donc la seule façon honnête de le déplacer sans
+ * envoyer quoi que ce soit sur internet — et il sert aussi de sauvegarde, ce que le
+ * `localStorage` seul ne garantit pas (vider son navigateur l'efface).
+ */
+export function exporterHistorique(liste = lireHistorique()) {
+  return {
+    format: FORMAT_SAUVEGARDE,
+    app: 'Cadence',
+    exporteLe: new Date().toISOString(),
+    analyses: liste,
+  };
+}
+
+/**
+ * Fusionne une sauvegarde avec l'historique local.
+ *
+ * On fusionne au lieu de remplacer : deux téléphones qui s'échangent leurs fichiers doivent
+ * finir avec la même chose, sans que l'un écrase le travail de l'autre. L'identifiant d'une
+ * analyse est unique et stable, il suffit à reconnaître ce qui est déjà là.
+ */
+export function importerHistorique(donnees) {
+  if (!donnees || typeof donnees !== 'object') {
+    throw new Error("Ce fichier n'est pas une sauvegarde Cadence.");
+  }
+  const entrantes = donnees.analyses ?? (Array.isArray(donnees) ? donnees : null);
+  if (!Array.isArray(entrantes)) {
+    throw new Error("Ce fichier ne contient aucune analyse — as-tu bien choisi le bon fichier ?");
+  }
+  if (donnees.format && donnees.format > FORMAT_SAUVEGARDE) {
+    throw new Error('Cette sauvegarde vient d\'une version plus récente de l\'app. Mets-la à jour sur ce téléphone.');
+  }
+
+  const valides = entrantes.filter((e) => e && typeof e.id === 'string' && typeof e.date === 'string');
+  const ignorees = entrantes.length - valides.length;
+
+  const locale = lireHistorique();
+  const connues = new Set(locale.map((e) => e.id));
+  const ajoutees = valides.filter((e) => !connues.has(e.id));
+
+  const fusion = [...locale, ...ajoutees]
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const ecrit = ecrire(fusion);
+  return {
+    ajoutees: ajoutees.length,
+    dejaPresentes: valides.length - ajoutees.length,
+    ignorees,
+    total: Math.min(fusion.length, MAX_ENTREES),
+    ecrit,
+  };
+}
