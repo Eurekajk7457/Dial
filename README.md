@@ -47,6 +47,16 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
    classification : coup droit, revers, service, volée.
 3. **Mesures biomécaniques** par frappe : hauteur d'impact, angle du coude, rotation du tronc,
    flexion des genoux, amplitude d'accompagnement, stabilité de la tête et du bassin, split-step.
+   Toutes les distances sont exprimées en **largeurs d'épaules**, mais cette unité n'est PAS la
+   largeur d'épaules mesurée à l'image : celle-ci s'effondre vers zéro quand le joueur se met de
+   profil, et diviser par un nombre proche de zéro faisait exploser tous les déplacements —
+   au point que mieux le joueur tournait, plus son bassin paraissait dériver (jusqu'à **2,6× de
+   gonflement** sur un bassin rigoureusement immobile). L'unité est donc reconstruite à partir du
+   **tronc**, que la rotation ne raccourcit pas : on mesure le rapport épaules/tronc sur les images
+   où le joueur est le plus de face, puis on l'applique au tronc de chaque image (`calibrerEchelle`).
+   L'échelle suit ainsi les changements de distance à la caméra sans suivre les rotations. Seul
+   l'indice de rotation continue de se lire sur la largeur d'épaules brute : son effondrement
+   *est* son signal, et c'est un rapport sans unité.
 4. **Moteur de règles** qui compare ces mesures à un référentiel de coaching (repères ITF / FFT / USTA)
    et produit des constats classés par priorité, chacun avec son exercice correctif.
 5. **Analyse IA facultative** : les images clés + les mesures sont envoyées à Claude (API Anthropic)

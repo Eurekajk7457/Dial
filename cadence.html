@@ -1631,9 +1631,49 @@ function construireSeries(frames, largeur, hauteur) {
       angleCoudeD: angle(p(P.epauleD), p(P.coudeD), p(P.poignetD)),
       angleGenouG: angle(hancheG, p(P.genouG), p(P.chevilleG)),
       angleGenouD: angle(hancheD, p(P.genouD), p(P.chevilleD)),
+      // Longueur du tronc : contrairement à la largeur d'épaules, elle ne change pas
+      // quand le joueur pivote sur lui-même. C'est ce qui en fait une bonne référence.
+      tronc: dist(epaules, hanches),
       buste: inclinaisonBuste(epaules, hanches),
     };
   });
+}
+
+/**
+ * Échelle corporelle : l'unité dans laquelle toutes les distances sont exprimées.
+ *
+ * Elle valait jusqu'ici la largeur d'épaules mesurée à l'image. Mauvaise idée : quand le
+ * joueur se met de profil pour préparer, ses épaules se superposent et cette largeur tend
+ * vers zéro. Diviser par un nombre proche de zéro faisait exploser tous les déplacements —
+ * si bien que mieux le joueur tournait, plus son bassin paraissait dériver. La mesure
+ * fabriquait le défaut qu'elle prétendait constater.
+ *
+ * On garde l'unité « largeur d'épaules », familière et compatible avec les seuils existants,
+ * mais on la reconstruit à partir du tronc, que la rotation ne raccourcit pas :
+ *   - on repère les images où le joueur est le plus de face (largeur d'épaules maximale) ;
+ *   - on y mesure le rapport largeur d'épaules / tronc, propre à ce joueur et à cette vidéo ;
+ *   - on applique ce rapport au tronc de chaque image.
+ *
+ * L'échelle suit donc les changements de distance à la caméra, sans suivre les rotations.
+ */
+function calibrerEchelle(series) {
+  const ok = series.filter((s) => s.ok && s.tronc > 0.01);
+  if (ok.length < 5) return series;
+
+  // Le joueur est le plus de face là où ses épaules paraissent les plus larges.
+  const swTriees = [...ok.map((s) => s.sw)].sort((a, b) => a - b);
+  const swReference = swTriees[Math.min(swTriees.length - 1, Math.round((swTriees.length - 1) * 0.9))];
+  const deFace = ok.filter((s) => s.sw >= swReference * 0.85);
+  const rapport = mediane((deFace.length ? deFace : ok).map((s) => s.sw / s.tronc));
+
+  // Rapport implausible (détection bancale) : on retombe sur l'ancienne référence.
+  const k = Number.isFinite(rapport) && rapport > 0.3 && rapport < 2.5 ? rapport : null;
+
+  for (const s of series) {
+    if (!s.ok) continue;
+    s.echelle = (k && s.tronc > 0.01) ? s.tronc * k : s.sw;
+  }
+  return series;
 }
 
 /** Détermine la main dominante : celle dont le poignet parcourt le plus de chemin. */
@@ -1644,8 +1684,8 @@ function detecterMain(series, force = 'auto') {
   for (let i = 1; i < series.length; i++) {
     const a = series[i - 1], b = series[i];
     if (!a.ok || !b.ok) continue;
-    cheminG += dist(a.poignetG, b.poignetG) / b.sw;
-    cheminD += dist(a.poignetD, b.poignetD) / b.sw;
+    cheminG += dist(a.poignetG, b.poignetG) / b.echelle;
+    cheminD += dist(a.poignetD, b.poignetD) / b.echelle;
   }
   return cheminD >= cheminG ? 'D' : 'G';
 }
@@ -1703,7 +1743,7 @@ function vitessePoignet(series, main) {
 
     // Un corps qui se déplace plus vite qu'un sprint humain n'a pas couru : le squelette
     // a changé de personne. La comparaison se fait bien en vitesse, pas en distance.
-    if (dist(a.hanches, b.hanches) / b.sw / dt > VITESSE_CORPS_MAX) continue;
+    if (dist(a.hanches, b.hanches) / b.echelle / dt > VITESSE_CORPS_MAX) continue;
 
     // Vitesse du poignet RELATIVEMENT au bassin, et non par rapport à l'image.
     // Un joueur qui sprinte emmène son bras avec lui : mesurée dans l'absolu, sa course
@@ -1712,7 +1752,7 @@ function vitessePoignet(series, main) {
     // passer la précision de 36 % à 100 % sur un sprint à 7 m/s.
     const relA = { x: a[cle].x - a.hanches.x, y: a[cle].y - a.hanches.y };
     const relB = { x: b[cle].x - b.hanches.x, y: b[cle].y - b.hanches.y };
-    const vitesse = dist(relA, relB) / b.sw / dt;
+    const vitesse = dist(relA, relB) / b.echelle / dt;
     if (vitesse > VITESSE_INVRAISEMBLABLE) continue;
     v[i] = vitesse;
   }
@@ -1735,7 +1775,7 @@ function tauxSautsDetection(series) {
     // l'imputer au joueur, qui a très bien pu courir pendant ce temps.
     if (dt <= 0 || dt > ecartMax) continue;
     transitions++;
-    if (dist(a.hanches, b.hanches) / b.sw / dt > VITESSE_CORPS_MAX) sauts++;
+    if (dist(a.hanches, b.hanches) / b.echelle / dt > VITESSE_CORPS_MAX) sauts++;
   }
   return transitions ? sauts / transitions : 0;
 }
@@ -1912,7 +1952,8 @@ function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
   const avant = fenetre(series, pic.t - 1.1, pic.t - 0.45);
   if (!prep.length || !global.length) return null;
 
-  const sw = mediane(global.map((s) => s.sw));
+  // Unité de mesure : l'échelle corporelle, stable quand le joueur pivote (voir calibrerEchelle).
+  const sw = mediane(global.map((s) => s.echelle));
   const poignet = contact[clePoignet];
 
   // Hauteur d'impact : 0 = hanche, 1 = épaule (l'axe y descend dans l'image)
@@ -1923,6 +1964,8 @@ function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
   // On compare le minimum et le maximum sur toute la frappe plutôt que « armé contre face » :
   // selon que la caméra est devant ou sur le côté, c'est l'armé ou l'impact qui paraît le plus
   // large, et seule l'amplitude du changement traduit réellement la rotation.
+  // Ici, et ici seulement, on garde la largeur d'épaules brute : son effondrement EST
+  // le signal de rotation. Le rapport min/max reste sans unité, donc insensible à l'échelle.
   const swMin = Math.min(...global.map((s) => s.sw));
   const swMax = Math.max(...global.map((s) => s.sw));
   const rotationEpaules = swMax > 0 ? swMin / swMax : NaN;
@@ -2234,12 +2277,27 @@ function reglesGroupe(type, frappes) {
   /* --- Stabilité --- */
   const sb = est('deplacementBassin', SEUILS.stabiliteBassin);
   const st = est('deplacementTete', SEUILS.stabiliteTete);
+  // Chaque appui a droit à son constat, en bien comme en mal. Auparavant, un bassin
+  // parfaitement stable ne valait aucun crédit dès lors que la tête bougeait : la mesure
+  // ne pouvait alors produire qu'un reproche, jamais un encouragement.
   if (sb.niveau === 'bon' && st.niveau === 'bon') {
     ajouter({
       niveau: 'bon', titre: 'Bon équilibre à la frappe',
       detail: 'Tête et bassin restent stables au moment du contact : ta base est solide, le geste est reproductible.',
     });
   } else {
+    if (sb.niveau === 'bon') {
+      ajouter({
+        niveau: 'bon', titre: 'Bassin stable à la frappe',
+        detail: `Ton bassin ne bouge que de ${med('deplacementBassin').toFixed(2)} largeur d'épaules autour de l'impact : ton appui est posé avant le geste, c'est une base saine.`,
+      });
+    }
+    if (st.niveau === 'bon') {
+      ajouter({
+        niveau: 'bon', titre: 'Tête stable au contact',
+        detail: `Ta tête ne bouge que de ${med('deplacementTete').toFixed(2)} largeur d'épaules autour du contact : ton regard reste sur la balle.`,
+      });
+    }
     if (sb.sens > 0) {
       ajouter({
         niveau: sb.niveau === 'mauvais' ? 'priorite' : 'corriger',
@@ -2582,7 +2640,7 @@ function analyserResultats(frappes) {
 function analyser({ frames, largeur, hauteur, tauxDetection, fenetre = null }, profil = {}) {
   const { main = 'auto', coup = 'auto' } = profil;
 
-  const series = construireSeries(frames, largeur, hauteur);
+  const series = calibrerEchelle(construireSeries(frames, largeur, hauteur));
   const mainDominante = detecterMain(series, main);
   const vitesse = vitessePoignet(series, mainDominante);
   const camera = detecterAngle(series);
