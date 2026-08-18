@@ -1260,14 +1260,16 @@ async function chargerDetecteur(onStatut = () => {}) {
       const vision = await FilesetResolver.forVisionTasks(source.wasm);
       detecteur = await PoseLandmarker.createFromOptions(vision, {
         baseOptions: { modelAssetPath: MODELE, delegate: 'GPU' },
-        // Mode IMAGE, et pas VIDEO. Le suivi temporel serait meilleur en théorie, mais
-        // `detectForVideo` échoue sur certains navigateurs et la détection tombe alors à zéro.
-        // Tant que ce n'est pas vérifiable sur de vraies vidéos, on reste sur ce qui marche.
-        runningMode: 'IMAGE',
+        // Mode VIDEO : le modèle suit le joueur d'une image à l'autre au lieu de le
+        // rechercher à zéro chaque fois — c'est ce qu'il faut pour quelqu'un qui court.
+        // Si le navigateur le refuse, `detecter()` bascule seul en mode IMAGE.
+        runningMode: 'VIDEO',
         numPoses: 1,
-        minPoseDetectionConfidence: 0.5,
-        minPosePresenceConfidence: 0.5,
-        minTrackingConfidence: 0.5,
+        // Un joueur en mouvement est flou : exiger 0,5 de confiance revient à le perdre
+        // dès qu'il accélère, c'est-à-dire précisément au moment de la frappe.
+        minPoseDetectionConfidence: 0.3,
+        minPosePresenceConfidence: 0.3,
+        minTrackingConfidence: 0.3,
       });
       return detecteur;
     } catch (err) {
@@ -1300,6 +1302,112 @@ function chercher(video, t) {
  * Échantillonne la vidéo et renvoie, pour chaque image : temps, points détectés et vignette JPEG.
  * @returns {Promise<{frames: Array, largeur: number, hauteur: number, tauxDetection: number}>}
  */
+/**
+ * État du détecteur, partagé entre les analyses successives.
+ *
+ * L'horodatage ne redémarre jamais à zéro : MediaPipe exige, en mode VIDEO, des horodatages
+ * strictement croissants d'un appel à l'autre. Comme le détecteur est gardé en mémoire d'une
+ * analyse à la suivante, repartir du temps de la vidéo faisait échouer TOUTES les images dès
+ * la deuxième analyse. Le modèle se moque de la valeur : elle doit seulement monter.
+ */
+const ETAT_DETECTEUR = { mode: 'VIDEO', horodatage: 0, bascule: null };
+const PAS_HORODATAGE = 40;   // ms fictives entre deux appels
+
+/**
+ * Détecte une posture, en préférant le mode VIDEO — qui suit le joueur d'une image à
+ * l'autre et convient bien mieux à quelqu'un qui se déplace — mais en basculant
+ * définitivement en mode IMAGE si le navigateur le refuse. Jamais zéro détection à cause
+ * d'un mode indisponible : c'est exactement ce qui s'était produit.
+ */
+function detecter(det, source, indice) {
+  if (ETAT_DETECTEUR.mode === 'VIDEO') {
+    try {
+      ETAT_DETECTEUR.horodatage += PAS_HORODATAGE;
+      const res = det.detectForVideo(source, ETAT_DETECTEUR.horodatage);
+      return { pts: res?.landmarks?.length ? res.landmarks[0] : null, erreur: null };
+    } catch (err) {
+      ETAT_DETECTEUR.mode = 'IMAGE';
+      ETAT_DETECTEUR.bascule = `image ${indice} : ${err?.message || err}`;
+      try { det.setOptions({ runningMode: 'IMAGE' }); } catch { /* on tente quand même */ }
+    }
+  }
+  try {
+    const res = det.detect(source);
+    return { pts: res?.landmarks?.length ? res.landmarks[0] : null, erreur: null };
+  } catch (err) {
+    return { pts: null, erreur: err?.message || String(err) };
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Suivi du joueur : on détecte dans une fenêtre qui le suit           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * MediaPipe travaille sur une image redimensionnée en petit. Un joueur qui n'occupe qu'un
+ * dixième de la largeur d'un plan large se retrouve donc haut comme quelques dizaines de
+ * pixels : le modèle ne le voit plus. D'où les taux de détection à 25 %.
+ *
+ * La parade : une fois le joueur repéré, on ne donne plus au modèle l'image entière mais
+ * une fenêtre recadrée autour de lui, agrandie à une taille confortable. Le joueur y occupe
+ * la quasi-totalité du cadre, et il est retrouvé bien plus souvent. La fenêtre se déplace
+ * avec lui d'une image à l'autre — c'est ce qui permet de suivre quelqu'un qui court.
+ */
+const MARGE_FENETRE = 0.9;    // on élargit la boîte du joueur de 90 % pour absorber son déplacement
+const LISSAGE_FENETRE = 0.5;  // la fenêtre suit le joueur sans sauter à chaque image
+const COTE_DETECTION = 512;   // taille du carré envoyé au modèle
+
+/** Boîte englobante des points visibles, en coordonnées normalisées de la vidéo. */
+function boiteJoueur(pts) {
+  let x0 = 1, y0 = 1, x1 = 0, y1 = 0, n = 0;
+  for (const p of pts) {
+    if (!p || (p.visibility ?? 1) < 0.3) continue;
+    x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+    y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+    n++;
+  }
+  if (n < 6 || x1 <= x0 || y1 <= y0) return null;
+  return { x0, y0, x1, y1 };
+}
+
+/**
+ * Élargit la boîte et la rend carrée : le modèle attend une image carrée, et déformer
+ * le joueur fausserait tous les angles. Le résultat est borné à l'image.
+ */
+function fenetreDeDetection(boite, largeurVideo, hauteurVideo) {
+  const cx = (boite.x0 + boite.x1) / 2;
+  const cy = (boite.y0 + boite.y1) / 2;
+  // Côté exprimé en pixels, pour rester carré malgré le format de l'image
+  const cote = Math.max((boite.x1 - boite.x0) * largeurVideo,
+                        (boite.y1 - boite.y0) * hauteurVideo) * (1 + MARGE_FENETRE);
+  const demi = Math.min(cote, Math.min(largeurVideo, hauteurVideo)) / 2;
+
+  let px = cx * largeurVideo, py = cy * hauteurVideo;
+  px = Math.min(largeurVideo - demi, Math.max(demi, px));
+  py = Math.min(hauteurVideo - demi, Math.max(demi, py));
+  return { x: px - demi, y: py - demi, cote: demi * 2 };
+}
+
+/** Ramène un point détecté dans la fenêtre vers les coordonnées de l'image entière. */
+function versImageEntiere(p, fenetre, largeurVideo, hauteurVideo) {
+  return {
+    ...p,
+    x: (fenetre.x + p.x * fenetre.cote) / largeurVideo,
+    y: (fenetre.y + p.y * fenetre.cote) / hauteurVideo,
+  };
+}
+
+/** Moyenne pondérée de deux fenêtres, pour que le cadre ne sursaute pas. */
+function lisserFenetre(precedente, nouvelle) {
+  if (!precedente) return nouvelle;
+  const m = (a, b) => a * LISSAGE_FENETRE + b * (1 - LISSAGE_FENETRE);
+  return {
+    x: m(precedente.x, nouvelle.x),
+    y: m(precedente.y, nouvelle.y),
+    cote: m(precedente.cote, nouvelle.cote),
+  };
+}
+
 async function echantillonner(video, { debut = 0, duree = 30, fps = 12, onProgres = () => {} } = {}) {
   const det = await chargerDetecteur((m) => onProgres(0, m));
 
@@ -1314,9 +1422,16 @@ async function echantillonner(video, { debut = 0, duree = 30, fps = 12, onProgre
   cv.height = Math.round(largeurVignette * ratio);
   const ctx = cv.getContext('2d', { willReadFrequently: true });
 
+  // Toile carrée où l'on recopie la fenêtre suivant le joueur, agrandie.
+  const cvDet = document.createElement('canvas');
+  cvDet.width = cvDet.height = COTE_DETECTION;
+  const ctxDet = cvDet.getContext('2d', { willReadFrequently: true });
+
   const frames = [];
   let detectees = 0;
-  let panne = null;   // première erreur de détection, s'il y en a une
+  let recadrees = 0;
+  let panne = null;        // première erreur de détection, s'il y en a une
+  let fenetre = null;      // fenêtre de suivi, nulle tant que le joueur n'a pas été trouvé
 
   for (let i = 0; i < total; i++) {
     const t = debut + i * pas;
@@ -1324,14 +1439,37 @@ async function echantillonner(video, { debut = 0, duree = 30, fps = 12, onProgre
     ctx.drawImage(video, 0, 0, cv.width, cv.height);
 
     let pts = null;
-    try {
-      const res = det.detect(video);
-      if (res?.landmarks?.length) pts = res.landmarks[0];
-    } catch (err) {
-      pts = null;
-      if (!panne) panne = err?.message || String(err);
+
+    // 1) D'abord dans la fenêtre qui suit le joueur : c'est là qu'il est le plus grand,
+    //    donc le plus facile à reconnaître.
+    if (fenetre) {
+      ctxDet.drawImage(video, fenetre.x, fenetre.y, fenetre.cote, fenetre.cote,
+        0, 0, COTE_DETECTION, COTE_DETECTION);
+      const brut = detecter(det, cvDet, i);
+      if (brut.erreur && !panne) panne = brut.erreur;
+      if (brut.pts) {
+        pts = brut.pts.map((p) => versImageEntiere(p, fenetre, video.videoWidth, video.videoHeight));
+        recadrees++;
+      }
     }
-    if (pts) detectees++;
+
+    // 2) Sinon (ou si le joueur est sorti de la fenêtre) : sur l'image entière.
+    if (!pts) {
+      const brut = detecter(det, video, i);
+      if (brut.erreur && !panne) panne = brut.erreur;
+      pts = brut.pts;
+      fenetre = null;
+    }
+
+    // La fenêtre se recale sur la position réelle du joueur, en douceur.
+    if (pts) {
+      const boite = boiteJoueur(pts);
+      if (boite) {
+        fenetre = lisserFenetre(fenetre,
+          fenetreDeDetection(boite, video.videoWidth, video.videoHeight));
+      }
+      detectees++;
+    }
 
     // Si le détecteur échoue sur les premières images, il échouera sur les 500 suivantes :
     // inutile de faire chauffer le téléphone pendant une minute pour rien.
@@ -1364,6 +1502,9 @@ async function echantillonner(video, { debut = 0, duree = 30, fps = 12, onProgre
     largeur: video.videoWidth,
     hauteur: video.videoHeight,
     tauxDetection: frames.length ? detectees / frames.length : 0,
+    // Part des détections obtenues grâce au suivi recadré, utile pour juger l'apport du suivi
+    tauxRecadrage: detectees ? recadrees / detectees : 0,
+    modeDetection: ETAT_DETECTEUR.mode,
     panne,
     // La fenêtre réellement regardée : sans elle, impossible de dire au joueur que le
     // jeu se trouve peut-être plus loin dans sa vidéo que l'extrait analysé.

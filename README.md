@@ -24,10 +24,22 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
 
 ## En détail
 
-1. **Détection de posture image par image**, dans le navigateur (MediaPipe Pose, `runningMode: 'IMAGE'`).
-   La vidéo ne quitte jamais ton appareil. Le mode `VIDEO` (suivi temporel) serait meilleur en
-   théorie mais `detectForVideo` échoue sur certains navigateurs, et la détection tombe alors à
-   zéro : ne pas y revenir sans l'avoir vérifié sur de vraies vidéos, sur téléphone.
+1. **Détection de posture** dans le navigateur (MediaPipe Pose) ; la vidéo ne quitte jamais
+   l'appareil. Trois mécanismes servent le cas qui compte — un joueur qui se déplace :
+   - **Fenêtre de détection qui suit le joueur.** MediaPipe réduit l'image à ~256 px avant de
+     l'analyser : un joueur occupant 10 % de la hauteur d'un plan large n'y fait plus que 26 px,
+     et devient invisible pour le modèle. Une fois repéré, on ne lui donne plus l'image entière
+     mais un carré recadré autour du joueur, agrandi à 512 px — il y fait alors 135 px, soit
+     **5,3× plus grand**. La fenêtre se déplace avec lui ; s'il en sort, on repasse sur l'image
+     entière et on la recale. Gain nul mais coût nul quand le joueur est déjà grand.
+   - **Mode `VIDEO`** (suivi temporel) plutôt que `IMAGE`, avec **bascule automatique** vers
+     `IMAGE` si le navigateur le refuse : plus jamais zéro détection à cause d'un mode
+     indisponible. L'horodatage envoyé au modèle est un compteur monotone qui ne repart jamais
+     à zéro — le détecteur étant gardé en mémoire entre deux analyses, repartir du temps de la
+     vidéo faisait échouer *toutes* les images dès la deuxième analyse.
+   - **Seuils de confiance à 0,3** : un joueur en mouvement est flou, exiger 0,5 revient à le
+     perdre au moment précis de la frappe.
+
    Une erreur du détecteur n'est jamais avalée — l'échantillonnage s'interrompt au bout de
    quelques images infructueuses et remonte le message technique, pour qu'une panne ne se
    déguise jamais en « mauvais cadrage ».
