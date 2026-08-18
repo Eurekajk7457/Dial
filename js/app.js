@@ -590,7 +590,7 @@ function rendreCoups(a) {
     infos.appendChild(el('h4', null, `${i + 1}. ${echapper(LIBELLES_COUP[f.type] || f.type)} — ${f.t.toFixed(1)} s`));
 
     // Le cœur de la carte : chaque mesure jugée, avec la raison en clair
-    const verdicts = verdictsFrappe(f);
+    const verdicts = verdictsFrappe(f, a.profil?.revers);
     const bilan = verdicts.filter((v) => v.niveau !== 'bon');
     infos.appendChild(el('p', 'bilan-frappe', bilan.length
       ? `<strong>${bilan.length}</strong> point${bilan.length > 1 ? 's' : ''} à corriger sur cette frappe`

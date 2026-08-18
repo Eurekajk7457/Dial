@@ -198,8 +198,11 @@ export const SEUILS = {
   flexionGenou:   { ideal: [130, 160], acceptable: [120, 168] },
   // Ratio largeur d'épaules min/max pendant le coup : plus c'est bas, plus la rotation est marquée
   rotationEpaules:{ ideal: [0, 0.72],  acceptable: [0, 0.85] },
-  // Angle du coude à l'impact (fond de court)
+  // Angle du coude à l'impact (fond de court, bras dominant tendu)
   coudeImpact:    { ideal: [140, 172], acceptable: [125, 178] },
+  // Revers à deux mains : les deux coudes restent nettement plus fléchis, le bras dominant
+  // ne se tend jamais comme en coup droit. Appliquer la même référence était une erreur.
+  coudeRevers2M:  { ideal: [105, 150], acceptable: [92, 162] },
   // Hauteur d'impact relative : 0 = hanche, 1 = épaule (fond de court)
   hauteurImpact:  { ideal: [0.25, 0.95], acceptable: [0.05, 1.2] },
   // Déplacement latéral du bassin pendant la frappe, en largeurs d'épaules

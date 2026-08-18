@@ -246,6 +246,14 @@ function quantile(triee, q) {
  * frappe peut passer dessous : on garde donc un plancher de repli, essayé seulement quand
  * le premier ne trouve rien du tout.
  */
+/**
+ * En dessous de ce taux de détection, l'app cesse d'énoncer des verdicts techniques.
+ * Les mesures restent visibles pour qui veut regarder, mais on ne dit plus « ton coude
+ * est trop plié » à partir d'un squelette absent une image sur trois : le chiffre ne
+ * décrirait pas le joueur.
+ */
+export const DETECTION_MINI_VERDICT = 0.7;
+
 export const PLANCHER_STRICT = 2.2;
 export const PLANCHER_SOUPLE = 1.1;
 
@@ -426,8 +434,13 @@ export function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
   const xsBassin = proche.map((s) => s.hanches.x);
   const deplacementBassin = xsBassin.length
     ? (Math.max(...xsBassin) - Math.min(...xsBassin)) / sw : NaN;
+  // La tête se mesure PAR RAPPORT AU BASSIN. Mesurée dans l'image, elle comptait comme
+  // défaut le simple fait de se déplacer vers la balle — or courir avec la tête au-dessus
+  // du corps est du bon tennis. Seule la tête qui part indépendamment du tronc est un défaut.
+  const teteSurCorps = (s) => ({ x: s.nez.x - s.hanches.x, y: s.nez.y - s.hanches.y });
+  const teteReference = teteSurCorps(contact);
   const deplacementTete = proche.length
-    ? Math.max(...proche.map((s) => dist(s.nez, contact.nez))) / sw : NaN;
+    ? Math.max(...proche.map((s) => dist(teteSurCorps(s), teteReference))) / sw : NaN;
 
   // Accompagnement : longueur du trajet du poignet après l'impact
   let accompagnement = 0;
@@ -457,24 +470,41 @@ export function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
     ? (Math.max(...avant.map((s) => s.hanches.y)) - Math.min(...avant.map((s) => s.hanches.y))) / sw
     : NaN;
 
+  // Incertitude sur l'angle du coude, imposée par la cadence d'échantillonnage.
+  // Le coude balaie plusieurs dizaines de degrés entre deux images au moment du swing :
+  // l'angle relevé « à l'impact » dépend alors surtout de l'image sur laquelle on est tombé.
+  // On mesure cette incertitude au lieu de faire comme si elle n'existait pas.
+  const swing = fenetre(series, pic.t - 0.15, pic.t + 0.15);
+  const ecartsCoude = [];
+  for (let i = 1; i < swing.length; i++) {
+    const a = swing[i - 1][cleCoude], b = swing[i][cleCoude];
+    if (Number.isFinite(a) && Number.isFinite(b)) ecartsCoude.push(Math.abs(b - a));
+  }
+  // L'impact réel tombe entre deux images : l'erreur vaut au plus la moitié de l'écart.
+  const incertitudeCoude = ecartsCoude.length ? mediane(ecartsCoude) / 2 : NaN;
+
   // Type de coup : la déclaration du joueur prime sur la reconnaissance automatique,
   // qui reste fragile en 2D (elle dépend fortement de l'angle de prise de vue).
+  // La reconnaissance automatique tourne TOUJOURS, même quand le joueur a déclaré son coup.
+  // Auparavant la déclaration court-circuitait tout : sur une séquence contenant des coups
+  // droits et des revers, l'app recopiait le menu déroulant et étiquetait tout pareil.
+  // Le type déclaré reste celui qui fait foi — la reconnaissance 2D est fragile — mais un
+  // désaccord fréquent est désormais signalé au joueur.
   const auDessusTete = poignet.y < contact.nez.y;
-  let type;
-  if (coupImpose && coupImpose !== 'auto') {
-    type = coupImpose;
-  } else if (auDessusTete && hauteurImpact > 1.6) {
-    type = 'service';
+  let typeDetecte;
+  if (auDessusTete && hauteurImpact > 1.6) {
+    typeDetecte = 'service';
   } else {
     const coteBras = Math.sign(contact[cleEpaule].x - contact.hanches.x);
     const cotePoignet = Math.sign(poignet.x - contact.hanches.x);
     const croise = coteBras !== 0 && cotePoignet !== 0 && coteBras !== cotePoignet;
     if (amplitudePrep < 0.85 && hauteurImpact > 0.1 && hauteurImpact < 1.4) {
-      type = croise ? 'volee-revers' : 'volee-coup-droit';
+      typeDetecte = croise ? 'volee-revers' : 'volee-coup-droit';
     } else {
-      type = croise ? 'revers' : 'coup-droit';
+      typeDetecte = croise ? 'revers' : 'coup-droit';
     }
   }
+  const type = (coupImpose && coupImpose !== 'auto') ? coupImpose : typeDetecte;
 
   return {
     t: pic.t,
@@ -493,6 +523,8 @@ export function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
     brasLibre,
     hauteurBrasLibre,
     oscillation,
+    typeDetecte,
+    incertitudeCoude,
     busteImpact: contact.buste,
   };
 }
@@ -519,9 +551,12 @@ export function mesuresJugeables(type) {
 }
 
 /** Le seuil à appliquer dépend du coup : un service se juge autrement qu'un coup droit. */
-export function seuilPour(cle, type) {
+export function seuilPour(cle, type, revers = 'deux') {
   if (type === 'service' && cle === 'coudeImpact') return SEUILS.coudeService;
   if (type === 'service' && cle === 'flexionGenou') return SEUILS.flexionService;
+  // Un revers à deux mains se joue coudes fléchis : lui appliquer la référence du coup
+  // droit revenait à lui reprocher systématiquement un « bras trop plié ».
+  if (cle === 'coudeImpact' && type === 'revers' && revers === 'deux') return SEUILS.coudeRevers2M;
   return { hauteurImpact: SEUILS.hauteurImpact, coudeImpact: SEUILS.coudeImpact,
     rotationEpaules: SEUILS.rotationEpaules, flexionGenou: SEUILS.flexionGenou,
     accompagnement: SEUILS.accompagnement, deplacementTete: SEUILS.stabiliteTete,
@@ -529,14 +564,30 @@ export function seuilPour(cle, type) {
 }
 
 /**
+ * L'angle du coude est-il mesurable à cette cadence ?
+ *
+ * Au moment du swing, le coude balaie plusieurs dizaines de degrés entre deux images.
+ * L'angle relevé « à l'impact » dépend alors de l'image sur laquelle on est tombé, pas du
+ * joueur. On compare donc l'incertitude d'échantillonnage à la largeur de la zone visée :
+ * si elle en dépasse le tiers, le verdict ne mesurerait que le hasard.
+ */
+export function coudeMesurable(incertitude, seuil) {
+  if (!Number.isFinite(incertitude) || !seuil) return true;
+  const largeurZone = seuil.ideal[1] - seuil.ideal[0];
+  return incertitude <= largeurZone / 3;
+}
+
+/**
  * Juge une frappe mesure par mesure : c'est ce qui permet de dire, frappe par frappe,
  * ce qui va et ce qui ne va pas — plutôt que d'afficher une colonne de chiffres nus.
  */
-export function verdictsFrappe(frappe) {
+export function verdictsFrappe(frappe, revers = 'deux') {
   const type = frappe.type;
   return mesuresJugeables(type).map((cle) => {
     const def = EXPLICATIONS.find((e) => e.cle === cle);
-    const seuil = seuilPour(cle, type);
+    const seuil = seuilPour(cle, type, revers);
+    // Mesure que la cadence d'échantillonnage ne permet pas de trancher : on se tait.
+    if (cle === 'coudeImpact' && !coudeMesurable(frappe.incertitudeCoude, seuil)) return null;
     if (!def || !seuil) return null;
 
     const valeur = frappe[cle];
@@ -566,8 +617,11 @@ export function verdictsFrappe(frappe) {
 /* ------------------------------------------------------------------ */
 
 /** Génère les constats pour un groupe de frappes du même type. */
-function reglesGroupe(type, frappes) {
+function reglesGroupe(type, frappes, profil = {}) {
   const c = [];
+  const revers = profil.revers === 'une' ? 'une' : 'deux';
+  // Incertitude médiane sur l'angle du coude, imposée par la cadence d'échantillonnage.
+  const incertitudeCoude = mediane(frappes.map((f) => f.incertitudeCoude));
   const n = frappes.length;
   const libelle = LIBELLES_COUP[type] || type;
   const med = (cle) => mediane(frappes.map((f) => f[cle]));
@@ -668,10 +722,21 @@ function reglesGroupe(type, frappes) {
   }
 
   /* --- Bras à l'impact --- */
-  const seuilCoude = service ? SEUILS.coudeService : SEUILS.coudeImpact;
+  const seuilCoude = seuilPour('coudeImpact', type, revers);
   const co = est('coudeImpact', seuilCoude);
   const vco = med('coudeImpact');
-  if (co.niveau === 'bon') {
+  if (!coudeMesurable(incertitudeCoude, seuilCoude)) {
+    // Se taire vaut mieux que trancher au hasard : à cette cadence, l'angle relevé à
+    // l'impact varie plus d'une image à l'autre que la largeur de la zone à juger.
+    ajouter({
+      niveau: 'info', coup: 'Mesure',
+      titre: "Angle du coude non mesurable à cette cadence",
+      detail: `Entre deux images, ton coude bouge d'environ ${(incertitudeCoude * 2).toFixed(0)}°. ` +
+        `L'angle relevé au moment de l'impact dépendrait donc surtout de l'image sur laquelle ` +
+        `on est tombé, pas de ton geste : aucun verdict n'est donné sur ce point, ni sur sa régularité. ` +
+        `Il faudrait filmer et analyser à cadence nettement plus élevée pour trancher.`,
+    });
+  } else if (co.niveau === 'bon') {
     ajouter({
       niveau: 'bon', titre: service ? 'Bonne extension au service' : 'Bonne distance à la balle',
       detail: `Coude à ${Math.round(vco)}° à l'impact : ${service ? "tu frappes bras tendu, au point le plus haut." : "le bras est allongé sans être verrouillé, tu frappes à bonne distance du corps."}`,
@@ -782,6 +847,12 @@ function reglesGroupe(type, frappes) {
   /* --- Régularité d'une frappe à l'autre --- */
   if (n >= 3) {
     const mesures = Object.entries(SEUILS_REGULARITE).map(([cle, def]) => {
+      // Une irrégularité inférieure à l'erreur de mesure ne mesure pas le joueur.
+      // Le coude balaie des dizaines de degrés entre deux images : à cette cadence,
+      // annoncer « ± 36° d'irrégularité » reviendrait à chiffrer le hasard.
+      if (cle === 'coudeImpact' && !coudeMesurable(incertitudeCoude, seuilCoude)) {
+        return { cle, ...def, et: NaN, etat: 'inconnu', exces: NaN };
+      }
       const et = ecartType(frappes.map((f) => f[cle]));
       const [bon, acceptable] = def.seuils;
       return {
@@ -917,6 +988,28 @@ function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte
         "mais un geste de replacement a pu s'y glisser.",
       exo: 'Filme de plus près (5 à 10 m, joueur en entier) pour une détection franche.',
     });
+  }
+
+  // Le coup déclaré fait foi, mais s'il contredit souvent ce qui est reconnu, le dire :
+  // sur un échange contenant coups droits et revers, tout étiqueter pareil serait faux.
+  if (frappes.length >= 4 && profil.coup && profil.coup !== 'auto') {
+    const desaccords = frappes.filter((f) => f.typeDetecte && f.typeDetecte !== f.type);
+    const part = desaccords.length / frappes.length;
+    if (part >= 0.35) {
+      const compte = new Map();
+      for (const f of desaccords) compte.set(f.typeDetecte, (compte.get(f.typeDetecte) || 0) + 1);
+      const autre = [...compte.entries()].sort((a, b) => b[1] - a[1])[0];
+      c.push({
+        niveau: 'corriger', coup: 'Réglage',
+        titre: 'La séquence ne contient sans doute pas que ce coup',
+        detail: `Tu as déclaré « ${LIBELLES_COUP[profil.coup] || profil.coup} », et toutes les frappes ` +
+          `sont analysées comme telles. Or ${desaccords.length} frappe(s) sur ${frappes.length} ressemblent ` +
+          `plutôt à « ${LIBELLES_COUP[autre[0]] || autre[0]} ». Les repères techniques diffèrent d'un coup ` +
+          `à l'autre : mélangés, les constats perdent de leur sens.`,
+        exo: "Découpe ta vidéo pour n'analyser qu'un seul type de coup à la fois (réglages avancés : " +
+          "début et durée), ou choisis « Un peu de tout, devine » pour laisser l'app classer chaque frappe.",
+      });
+    }
   }
 
   if (camera && frappes.length) {
@@ -1126,7 +1219,7 @@ export function analyser({ frames, largeur, hauteur, tauxDetection, fenetre = nu
   let constats = [];
   for (const [type, liste] of groupes) {
     if (liste.length === 0) continue;
-    constats = constats.concat(reglesGroupe(type, liste));
+    constats = constats.concat(reglesGroupe(type, liste, profil));
   }
   constats = constats.concat(reglesGlobales(frappes, duree, tauxDetection, profil, mainSuspecte,
     { diagnostic, detectionSouple, fenetre, camera }));
@@ -1140,6 +1233,24 @@ export function analyser({ frames, largeur, hauteur, tauxDetection, fenetre = nu
   if (constats.some((c) => c.niveau === 'priorite')) score = Math.min(score, 82);
   else if (constats.some((c) => c.niveau === 'corriger')) score = Math.min(score, 92);
   score = frappes.length ? Math.round(score) : null;
+
+  // Sous le seuil de fiabilité, les verdicts techniques sont retirés : ils décriraient
+  // le bruit de détection, pas le joueur. Les constats de qualité vidéo, eux, restent —
+  // ce sont précisément ceux qui expliquent pourquoi.
+  if (frappes.length && tauxDetection < DETECTION_MINI_VERDICT) {
+    const garde = ['Réglage', 'Qualité vidéo', 'Détection', 'Prise de vue', 'Mesure', 'Général'];
+    constats = constats.filter((x) => garde.includes(x.coup));
+    constats.push({
+      niveau: 'priorite', coup: 'Qualité vidéo',
+      titre: 'Verdicts techniques suspendus',
+      detail: `Le joueur n'est reconnu que sur ${Math.round(tauxDetection * 100)} % des images, ` +
+        `en dessous des ${Math.round(DETECTION_MINI_VERDICT * 100)} % nécessaires pour juger un geste. ` +
+        `Les mesures restent affichées dans l'onglet « Mesures » si tu veux les regarder, mais aucun ` +
+        `constat technique n'est énoncé : il décrirait les trous de détection, pas ton tennis.`,
+      exo: 'Refilme le joueur plus grand dans le cadre, seul dans le champ, et relance : ' +
+        "au-dessus de 70 % de détection, l'analyse reprend d'elle-même.",
+    });
+  }
 
   const ordre = { priorite: 0, corriger: 1, bon: 2, info: 3 };
   constats.sort((a, b) => ordre[a.niveau] - ordre[b.niveau]);

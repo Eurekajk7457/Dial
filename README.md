@@ -43,8 +43,11 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
    Une erreur du détecteur n'est jamais avalée — l'échantillonnage s'interrompt au bout de
    quelques images infructueuses et remonte le message technique, pour qu'une panne ne se
    déguise jamais en « mauvais cadrage ».
-2. **Détection automatique des frappes** à partir de la vitesse du poignet dominant, puis
-   classification : coup droit, revers, service, volée.
+2. **Détection automatique des frappes** à partir de la vitesse du poignet dominant (mesurée
+   relativement au bassin), puis classification : coup droit, revers, service, volée.
+   La reconnaissance tourne **toujours**, même quand le joueur a déclaré son coup : la déclaration
+   fait foi, mais si plus d'un tiers des frappes ressemblent à autre chose, l'app le signale au
+   lieu d'étiqueter toute la séquence d'après le menu déroulant.
 3. **Mesures biomécaniques** par frappe : hauteur d'impact, angle du coude, rotation du tronc,
    flexion des genoux, amplitude d'accompagnement, stabilité de la tête et du bassin, split-step.
    Toutes les distances sont exprimées en **largeurs d'épaules**, mais cette unité n'est PAS la
@@ -58,7 +61,19 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
    l'indice de rotation continue de se lire sur la largeur d'épaules brute : son effondrement
    *est* son signal, et c'est un rapport sans unité.
 4. **Moteur de règles** qui compare ces mesures à un référentiel de coaching (repères ITF / FFT / USTA)
-   et produit des constats classés par priorité, chacun avec son exercice correctif.
+   et produit des constats classés par priorité, chacun avec son exercice correctif. Trois garde-fous
+   l'empêchent de conclure au-delà de ce qu'il sait :
+   - **Résolution temporelle.** Au moment du swing, le coude balaie plusieurs dizaines de degrés
+     entre deux images : l'angle relevé « à l'impact » dépendrait de l'image sur laquelle on est
+     tombé. L'incertitude est mesurée sur chaque frappe (moitié de l'écart médian entre images
+     consécutives) ; si elle dépasse le tiers de la zone à juger, aucun verdict n'est donné sur
+     l'angle du coude **ni sur sa régularité**, et l'app dit pourquoi.
+   - **Seuil de fiabilité.** En dessous de 70 % de détection, tous les verdicts techniques sont
+     suspendus et le score passe à `null` : les mesures restent consultables, mais elles
+     décriraient les trous de détection plutôt que le joueur.
+   - **Référentiels par coup.** Un revers à deux mains se joue coudes fléchis (105–150°) ; lui
+     appliquer la référence du coup droit (140–172°) revenait à lui reprocher systématiquement un
+     bras trop plié. Le type de revers déclaré sélectionne désormais le bon repère.
 5. **Analyse IA facultative** : les images clés + les mesures sont envoyées à Claude (API Anthropic)
    avec *ta* clé, avec recherche web activable pour appuyer les conseils sur des sources en ligne.
 6. **Fiches de fondamentaux** consultables hors ligne pour chaque coup.
@@ -219,7 +234,11 @@ détection, on retrouve 58 % des frappes à 20 images/seconde contre 8 % à 12.
 - Détection **2D** à partir d'une seule caméra : les angles sont sensibles à l'orientation de la prise
   de vue. Une frappe filmée de face donnera des mesures moins fiables que de profil.
 - La **prise de raquette**, l'**effet** donné à la balle et la **trajectoire** ne sont pas mesurés :
-  la raquette et la balle ne sont pas détectées.
+  la raquette et la balle ne sont pas détectées. L'app ne sait donc pas s'il y a eu contact — un
+  geste à vide compte comme une frappe — ni où la balle est partie, sauf si le joueur le renseigne.
+- **Aucune profondeur** : une caméra unique ne mesure que deux axes. Les constats qui supposent une
+  distance vers la caméra (« impact trop près du corps ») sont à prendre comme des indices, pas
+  comme des mesures.
 - La classification volée / coup de fond est heuristique et peut se tromper sur des gestes courts.
 - En dessous de **70 % de détection de posture**, des frappes manquent forcément ; en dessous de
   40 %, l'analyse ne trouve plus rien du tout. Ce n'est pas un réglage à forcer, c'est la vidéo
