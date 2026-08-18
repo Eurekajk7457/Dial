@@ -239,6 +239,27 @@ fiables, pas la deuxième décimale.)
 **Comptage face à la vérité** (`precision.mjs`). Rappel et précision de la détection de frappes
 sur neuf situations dont le nombre et l'instant des frappes sont connus — voir le tableau suivant.
 
+## Une médiane ne vaut que si elle caractérise
+
+Un rapport ne peut pas à la fois vanter « coude à 126° » et dénoncer « ± 48° d'irrégularité » :
+c'est la même mesure, et une valeur centrale noyée dans un tel nuage ne décrit rien. Avant de
+juger une médiane, l'app vérifie donc que la dispersion entre frappes reste inférieure à la
+largeur de la zone visée (`medianeCaracteristique`). Au-delà, elle décrit la variabilité au lieu
+de trancher, et indique que l'écart peut venir du geste **comme de la cadence d'analyse**.
+
+Le déplacement du bassin, lui, se mesure désormais sur ± 0,12 s autour du contact et non ± 0,25 s :
+sur une demi-seconde, un joueur qui court chercher la balle parcourt naturellement plus d'une
+largeur d'épaules et se voyait reprocher un « déséquilibre » qui n'était que du déplacement. Ce
+constat ne peut plus être classé « priorité » : depuis une seule caméra, rien ne distingue un
+déséquilibre d'une frappe en course, qui est un coup légitime.
+
+## Versions des mesures
+
+Une analyse enregistrée garde ses chiffres tels quels — les rouvrir n'est pas les recalculer.
+Chaque séance porte donc un numéro de version du moteur de mesure (`VERSION_MESURES`), et l'app
+signale les séances calculées avec une définition antérieure : leurs valeurs ne sont pas
+comparables aux récentes, il faut réanalyser la vidéo d'origine pour les mettre à jour.
+
 ## Protocole de suivi
 
 Pour qu'une courbe sur trois ans mesure le joueur et non le trépied, l'app propose un protocole

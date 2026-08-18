@@ -18,7 +18,7 @@ import { analyserAvecClaude, poserQuestion } from './ai.js';
 import {
   enregistrer, lireHistorique, supprimer, toutEffacer, coupsPresents,
   serie, tracerCourbe, commenterEvolution, MESURES_SUIVIES,
-  lireAnalyse, estRouvrable, actualiserResultats, bilanConstats,
+  lireAnalyse, estRouvrable, actualiserResultats, bilanConstats, mesuresAJour,
   exporterHistorique, importerHistorique,
   empreinteFichier, trouverParEmpreinte,
 } from './historique.js';
@@ -975,6 +975,16 @@ function rendreJournal(vue, liste) {
 
     const conformite = etiquetteConformite(e);
     if (conformite) carte.appendChild(conformite);
+
+    // Une séance ancienne garde les chiffres calculés à l'époque : le dire, sinon on
+    // comparerait sur une même courbe des valeurs qui n'ont plus la même définition.
+    if (!mesuresAJour(e)) {
+      carte.appendChild(el('div', 'conformite moyen',
+        "<p class=\"c-titre\">Chiffres calculés par une version antérieure</p>" +
+        "<ul><li>La façon de mesurer a changé depuis (unité de distance, stabilité de la tête " +
+        "et du bassin). Ces valeurs ne sont pas comparables aux séances récentes. " +
+        "Réanalyse la vidéo d'origine si tu veux les mettre à jour.</li></ul>"));
+    }
 
     const actions = el('div', 'actions');
     if (estRouvrable(e)) {

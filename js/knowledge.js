@@ -206,7 +206,7 @@ export const SEUILS = {
   // Hauteur d'impact relative : 0 = hanche, 1 = épaule (fond de court)
   hauteurImpact:  { ideal: [0.25, 0.95], acceptable: [0.05, 1.2] },
   // Déplacement latéral du bassin pendant la frappe, en largeurs d'épaules
-  stabiliteBassin:{ ideal: [0, 0.35], acceptable: [0, 0.6] },
+  stabiliteBassin:{ ideal: [0, 0.45], acceptable: [0, 0.9] },
   // Déplacement de la tête pendant la frappe, en largeurs d'épaules
   stabiliteTete:  { ideal: [0, 0.28], acceptable: [0, 0.5] },
   // Amplitude d'accompagnement après l'impact, en largeurs d'épaules
@@ -313,9 +313,12 @@ export const EXPLICATIONS = [
     libelle: "Stabilité du bassin",
     echelle: 'distance parcourue par le bassin pendant la frappe, en largeurs d\'épaules',
     quoi: "De combien ton centre de gravité se déplace pendant la frappe.",
-    pourquoi: "Un bassin qui glisse latéralement pendant la frappe, c'est un appui qui n'est pas posé : " +
-      "tu frappes en déséquilibre et la balle part au hasard.",
-    tropHaut: "Tu frappes encore en mouvement. Pose ton appui avant de déclencher le geste, quitte à jouer plus court.",
+    pourquoi: "Un bassin encore lancé au moment précis du contact, c'est un appui qui n'est pas posé. " +
+      "Attention : se déplacer pour aller chercher la balle est normal et souhaitable — seul compte " +
+      "l'instant de la frappe, mesuré sur un douzième de seconde de part et d'autre du contact.",
+    tropHaut: "Ton bassin est encore lancé à l'instant du contact. Sur une balle que tu dois courir chercher, " +
+      "c'est parfois inévitable ; si ça arrive aussi sur des balles confortables, pose ton appui avant de " +
+      "déclencher le geste, quitte à jouer plus court.",
     tropBas: "Rien à corriger : c'est le signe d'une base stable.",
     exercice: "Échanges lents avec consigne : arrêter complètement les pieds avant de lancer le geste.",
     requeteVideo: "ancrage des appuis à la frappe tennis",

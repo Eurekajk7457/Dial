@@ -9,6 +9,20 @@ import { SEUILS } from './knowledge.js';
 import { LIBELLES_COUP } from './analyse.js';
 
 const CLE = 'dial-tennis-historique';
+
+/**
+ * Version du moteur de mesure. À incrémenter dès qu'un calcul change de définition.
+ *
+ * Une analyse enregistrée garde ses chiffres tels quels : les rouvrir n'est pas les
+ * recalculer. Sans cette version, une correction de fond resterait invisible sur les
+ * anciennes séances — et pire, on comparerait sur une même courbe des valeurs qui ne
+ * veulent plus dire la même chose.
+ *
+ * 1 : unité = largeur d'épaules mesurée à l'image (s'effondrait de profil)
+ * 2 : unité = échelle corporelle calibrée sur le tronc ; tête mesurée par rapport au
+ *     bassin ; fenêtre de stabilité resserrée à ± 0,12 s
+ */
+export const VERSION_MESURES = 2;
 const MAX_ENTREES = 100;
 
 /**
@@ -152,6 +166,7 @@ export function enregistrer(analyse, echantillon = null, empreinte = null) {
     // Conditions de prise de vue : sans elles, impossible de savoir si deux séances
     // sont comparables ou si c'est la caméra qui a bougé.
     conditions: analyse.conditions || null,
+    versionMesures: VERSION_MESURES,
     score: analyse.score,
     nbFrappes: analyse.frappes.length,
     duree: Math.round(analyse.duree * 10) / 10,
@@ -222,6 +237,11 @@ export function lireAnalyse(id) {
 /** Une analyse rouvrable garde son détail ; les plus anciennes peuvent l'avoir perdu. */
 export function estRouvrable(entree) {
   return !!entree?.detail?.frappes?.length;
+}
+
+/** Les chiffres de cette séance ont-ils été calculés avec la définition actuelle ? */
+export function mesuresAJour(entree) {
+  return (entree?.versionMesures || 1) >= VERSION_MESURES;
 }
 
 export function supprimer(id) {

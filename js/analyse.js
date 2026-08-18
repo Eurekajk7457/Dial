@@ -104,7 +104,12 @@ export function construireSeries(frames, largeur, hauteur) {
  */
 export function calibrerEchelle(series) {
   const ok = series.filter((s) => s.ok && s.tronc > 0.01);
-  if (ok.length < 5) return series;
+  // Trop peu d'images pour calibrer : on retombe sur la largeur d'épaules. Sans cette
+  // ligne, `echelle` restait indéfini et toutes les distances devenaient NaN en silence.
+  if (ok.length < 5) {
+    for (const s of series) if (s.ok) s.echelle = s.sw;
+    return series;
+  }
 
   // Le joueur est le plus de face là où ses épaules paraissent les plus larges.
   const swTriees = [...ok.map((s) => s.sw)].sort((a, b) => a - b);
@@ -407,7 +412,9 @@ export function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
   if (!prep.length || !global.length) return null;
 
   // Unité de mesure : l'échelle corporelle, stable quand le joueur pivote (voir calibrerEchelle).
-  const sw = mediane(global.map((s) => s.echelle));
+  // Elle s'exprime en largeurs d'épaules mais se calcule sur le tronc — d'où le nom explicite,
+  // pour qu'on ne croie plus, en relisant, que c'est la largeur d'épaules brute.
+  const echelle = mediane(global.map((s) => s.echelle));
   const poignet = contact[clePoignet];
 
   // Hauteur d'impact : 0 = hanche, 1 = épaule (l'axe y descend dans l'image)
@@ -429,23 +436,26 @@ export function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
     ...prep.map((s) => Math.min(s.angleGenouG || 999, s.angleGenouD || 999))
   );
 
-  // Stabilité : déplacement latéral du bassin et de la tête autour de l'impact
-  const proche = fenetre(series, pic.t - 0.25, pic.t + 0.25);
+  // Stabilité : fenêtre resserrée autour du contact. Sur ± 0,25 s, un joueur qui court
+  // chercher la balle parcourait naturellement plus d'une largeur d'épaules, et se voyait
+  // reprocher un « déséquilibre » qui n'était que du déplacement. Sur ± 0,12 s, on mesure
+  // ce qui compte : l'appui est-il posé au moment de frapper.
+  const proche = fenetre(series, pic.t - 0.12, pic.t + 0.12);
   const xsBassin = proche.map((s) => s.hanches.x);
   const deplacementBassin = xsBassin.length
-    ? (Math.max(...xsBassin) - Math.min(...xsBassin)) / sw : NaN;
+    ? (Math.max(...xsBassin) - Math.min(...xsBassin)) / echelle : NaN;
   // La tête se mesure PAR RAPPORT AU BASSIN. Mesurée dans l'image, elle comptait comme
   // défaut le simple fait de se déplacer vers la balle — or courir avec la tête au-dessus
   // du corps est du bon tennis. Seule la tête qui part indépendamment du tronc est un défaut.
   const teteSurCorps = (s) => ({ x: s.nez.x - s.hanches.x, y: s.nez.y - s.hanches.y });
   const teteReference = teteSurCorps(contact);
   const deplacementTete = proche.length
-    ? Math.max(...proche.map((s) => dist(teteSurCorps(s), teteReference))) / sw : NaN;
+    ? Math.max(...proche.map((s) => dist(teteSurCorps(s), teteReference))) / echelle : NaN;
 
   // Accompagnement : longueur du trajet du poignet après l'impact
   let accompagnement = 0;
   for (let i = 1; i < suivi.length; i++) {
-    accompagnement += dist(suivi[i - 1][clePoignet], suivi[i][clePoignet]) / sw;
+    accompagnement += dist(suivi[i - 1][clePoignet], suivi[i][clePoignet]) / echelle;
   }
   const finGeste = suivi.at(-1);
   const hauteurFin = finGeste && ecartTronc > 0
@@ -454,7 +464,7 @@ export function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
   // Armé : longueur du trajet du poignet avant l'impact
   let amplitudePrep = 0;
   for (let i = 1; i < prep.length; i++) {
-    amplitudePrep += dist(prep[i - 1][clePoignet], prep[i][clePoignet]) / sw;
+    amplitudePrep += dist(prep[i - 1][clePoignet], prep[i][clePoignet]) / echelle;
   }
 
   // Bras libre écarté du corps pendant l'armé (équilibre / repérage de balle)
@@ -467,7 +477,7 @@ export function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
 
   // Oscillation verticale du bassin avant la frappe → indice de split-step
   const oscillation = avant.length > 2
-    ? (Math.max(...avant.map((s) => s.hanches.y)) - Math.min(...avant.map((s) => s.hanches.y))) / sw
+    ? (Math.max(...avant.map((s) => s.hanches.y)) - Math.min(...avant.map((s) => s.hanches.y))) / echelle
     : NaN;
 
   // Incertitude sur l'angle du coude, imposée par la cadence d'échantillonnage.
@@ -561,6 +571,23 @@ export function seuilPour(cle, type, revers = 'deux') {
     rotationEpaules: SEUILS.rotationEpaules, flexionGenou: SEUILS.flexionGenou,
     accompagnement: SEUILS.accompagnement, deplacementTete: SEUILS.stabiliteTete,
     deplacementBassin: SEUILS.stabiliteBassin }[cle] || null;
+}
+
+/**
+ * Une médiane mérite-t-elle un verdict ?
+ *
+ * Citer « coude à 126° » comme point fort tout en signalant « ± 48° d'irrégularité »
+ * est contradictoire : c'est la même mesure, et une médiane entourée d'un tel nuage ne
+ * caractérise plus rien. On exige donc que la dispersion entre frappes reste inférieure
+ * à la largeur de la zone visée ; au-delà, on décrit la variabilité au lieu de juger la
+ * valeur centrale.
+ */
+export function medianeCaracteristique(valeurs, seuil) {
+  const v = finis(valeurs);
+  if (!seuil || v.length < 3) return { significative: true, ecart: NaN };
+  const ecart = ecartType(v);
+  const largeurZone = seuil.ideal[1] - seuil.ideal[0];
+  return { significative: !Number.isFinite(ecart) || ecart <= largeurZone, ecart };
 }
 
 /**
@@ -725,7 +752,22 @@ function reglesGroupe(type, frappes, profil = {}) {
   const seuilCoude = seuilPour('coudeImpact', type, revers);
   const co = est('coudeImpact', seuilCoude);
   const vco = med('coudeImpact');
-  if (!coudeMesurable(incertitudeCoude, seuilCoude)) {
+  const dispersionCoude = medianeCaracteristique(frappes.map((f) => f.coudeImpact), seuilCoude);
+  if (!dispersionCoude.significative) {
+    // On ne peut pas à la fois louer une médiane et dénoncer sa dispersion : c'est la même
+    // mesure. Quand le nuage dépasse la zone à juger, seule la variabilité a un sens.
+    ajouter({
+      niveau: 'corriger', coup: 'Mesure',
+      titre: "Angle du coude trop variable pour être caractérisé",
+      detail: `D'une frappe à l'autre, ton coude à l'impact varie de ± ${Math.round(dispersionCoude.ecart)}°, ` +
+        `soit plus que la largeur de la zone à viser (${seuilCoude.ideal[0]}–${seuilCoude.ideal[1]}°). ` +
+        `Annoncer une valeur moyenne n'aurait pas de sens : ce n'est pas un angle, c'est un nuage. ` +
+        `Cet écart peut venir de ton geste comme de la cadence d'analyse — à 20 images/seconde, ` +
+        `le coude bouge beaucoup entre deux images.`,
+      exo: "Relance à 30 images/seconde : si l'écart se réduit nettement, il venait de la mesure. " +
+        "S'il persiste, c'est ton geste qui varie, et c'est alors la régularité qu'il faut travailler.",
+    });
+  } else if (!coudeMesurable(incertitudeCoude, seuilCoude)) {
     // Se taire vaut mieux que trancher au hasard : à cette cadence, l'angle relevé à
     // l'impact varie plus d'une image à l'autre que la largeur de la zone à juger.
     ajouter({
@@ -811,9 +853,13 @@ function reglesGroupe(type, frappes, profil = {}) {
     }
     if (sb.sens > 0) {
       ajouter({
-        niveau: sb.niveau === 'mauvais' ? 'priorite' : 'corriger',
-        titre: 'Bassin qui dérive à la frappe',
-        detail: `Ton bassin se déplace de ${med('deplacementBassin').toFixed(2)} largeur d'épaules autour de l'impact. Tu frappes en déséquilibre : la régularité en souffre plus que la puissance.`,
+        // Jamais « priorité » : depuis une seule caméra, on ne sait pas distinguer un
+        // déséquilibre d'une frappe en course, qui est un coup légitime.
+        niveau: 'corriger',
+        titre: 'Bassin encore lancé au moment du contact',
+        detail: `Autour du contact, ton bassin parcourt ${med('deplacementBassin').toFixed(2)} largeur d'épaules ` +
+          `en un quart de seconde. Sur une balle courue, c'est normal ; si ça se répète sur des balles ` +
+          `confortables, l'appui n'est pas posé au moment de frapper et la régularité en souffre.`,
         exo: "Frappes en fente : pose l'appui avant et interdis-toi de le décoller avant la fin du geste. 15 balles de chaque côté.",
       });
     }
