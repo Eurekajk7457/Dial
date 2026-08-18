@@ -776,6 +776,22 @@ function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte
   // Aucune frappe : dire précisément ce qui a été vu, sinon le joueur change des réglages au hasard.
   if (!frappes.length && diagnostic && !mainSuspecte) {
     const pistes = [];
+
+    // Zéro image reconnue n'est pas un problème de cadrage : c'est une panne. Le dire,
+    // au lieu d'envoyer le joueur refilmer pour rien.
+    if (diagnostic.imagesOk === 0) {
+      c.push({
+        niveau: 'priorite', coup: 'Détection',
+        titre: 'La détection de posture n\'a pas fonctionné',
+        detail: `Le joueur n'a été reconnu sur aucune des ${diagnostic.images} images. Ce n'est pas ` +
+          `ton cadrage : quand la détection fonctionne, elle trouve toujours quelque chose, même ` +
+          `mal. Zéro sur toute la séquence veut dire que le détecteur lui-même n'a pas tourné.`,
+        exo: 'Recharge complètement la page (tire l\'écran vers le bas) et relance l\'analyse. ' +
+          'Si le problème persiste, essaie depuis un autre navigateur et signale-le.',
+      });
+      return c;
+    }
+
     // Cause la plus fréquente et la plus déroutante : le squelette saute d'une personne
     // à l'autre. Elle passe avant tout le reste, car aucun réglage ne la compense.
     if (diagnostic.detectionInstable) {

@@ -51,18 +51,14 @@ export async function chargerDetecteur(onStatut = () => {}) {
       const vision = await FilesetResolver.forVisionTasks(source.wasm);
       detecteur = await PoseLandmarker.createFromOptions(vision, {
         baseOptions: { modelAssetPath: MODELE, delegate: 'GPU' },
-        // VIDEO plutôt qu'IMAGE : le modèle suit le joueur d'une image à l'autre au lieu de
-        // le rechercher à zéro à chaque fois. Il le retrouve donc beaucoup plus souvent quand
-        // il est petit ou flou, et surtout il reste sur LA MÊME personne — c'est ce qui évite
-        // que le squelette bascule sur l'adversaire au milieu d'un échange.
-        runningMode: 'VIDEO',
+        // Mode IMAGE, et pas VIDEO. Le suivi temporel serait meilleur en théorie, mais
+        // `detectForVideo` échoue sur certains navigateurs et la détection tombe alors à zéro.
+        // Tant que ce n'est pas vérifiable sur de vraies vidéos, on reste sur ce qui marche.
+        runningMode: 'IMAGE',
         numPoses: 1,
-        // Un joueur filmé de loin passe rarement la barre de 0,5 : mieux vaut une détection
-        // hésitante, que les filtres de vitesse écarteront si elle est aberrante, que pas
-        // de détection du tout.
-        minPoseDetectionConfidence: 0.3,
-        minPosePresenceConfidence: 0.3,
-        minTrackingConfidence: 0.3,
+        minPoseDetectionConfidence: 0.5,
+        minPosePresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5,
       });
       return detecteur;
     } catch (err) {
@@ -111,6 +107,7 @@ export async function echantillonner(video, { debut = 0, duree = 30, fps = 12, o
 
   const frames = [];
   let detectees = 0;
+  let panne = null;   // première erreur de détection, s'il y en a une
 
   for (let i = 0; i < total; i++) {
     const t = debut + i * pas;
@@ -119,13 +116,22 @@ export async function echantillonner(video, { debut = 0, duree = 30, fps = 12, o
 
     let pts = null;
     try {
-      // Les horodatages doivent croître strictement : l'échantillonnage avance dans le temps.
-      const res = det.detectForVideo(video, Math.round(t * 1000));
+      const res = det.detect(video);
       if (res?.landmarks?.length) pts = res.landmarks[0];
-    } catch {
+    } catch (err) {
       pts = null;
+      if (!panne) panne = err?.message || String(err);
     }
     if (pts) detectees++;
+
+    // Si le détecteur échoue sur les premières images, il échouera sur les 500 suivantes :
+    // inutile de faire chauffer le téléphone pendant une minute pour rien.
+    if (panne && i >= 4 && detectees === 0) {
+      throw new Error(
+        "Le détecteur de posture a refusé de fonctionner sur cette vidéo — ce n'est pas un " +
+        "problème de cadrage ni de réglage de ta part. Recharge la page et réessaie ; " +
+        "si ça persiste, essaie un autre navigateur. Détail technique : " + panne);
+    }
 
     // En local (fichier ouvert directement), certains navigateurs interdisent de relire
     // les pixels d'une vidéo : on continue sans vignette plutôt que d'interrompre l'analyse.
@@ -149,6 +155,7 @@ export async function echantillonner(video, { debut = 0, duree = 30, fps = 12, o
     largeur: video.videoWidth,
     hauteur: video.videoHeight,
     tauxDetection: frames.length ? detectees / frames.length : 0,
+    panne,
     // La fenêtre réellement regardée : sans elle, impossible de dire au joueur que le
     // jeu se trouve peut-être plus loin dans sa vidéo que l'extrait analysé.
     fenetre: { debut, fin, dureeVideo: video.duration || 0, fps },

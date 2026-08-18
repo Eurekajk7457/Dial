@@ -24,8 +24,13 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
 
 ## En détail
 
-1. **Détection de posture image par image**, dans le navigateur (MediaPipe Pose).
-   La vidéo ne quitte jamais ton appareil.
+1. **Détection de posture image par image**, dans le navigateur (MediaPipe Pose, `runningMode: 'IMAGE'`).
+   La vidéo ne quitte jamais ton appareil. Le mode `VIDEO` (suivi temporel) serait meilleur en
+   théorie mais `detectForVideo` échoue sur certains navigateurs, et la détection tombe alors à
+   zéro : ne pas y revenir sans l'avoir vérifié sur de vraies vidéos, sur téléphone.
+   Une erreur du détecteur n'est jamais avalée — l'échantillonnage s'interrompt au bout de
+   quelques images infructueuses et remonte le message technique, pour qu'une panne ne se
+   déguise jamais en « mauvais cadrage ».
 2. **Détection automatique des frappes** à partir de la vitesse du poignet dominant, puis
    classification : coup droit, revers, service, volée.
 3. **Mesures biomécaniques** par frappe : hauteur d'impact, angle du coude, rotation du tronc,
