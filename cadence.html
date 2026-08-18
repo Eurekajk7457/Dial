@@ -616,6 +616,37 @@ details.transfert > summary {
 details.transfert .actions { margin-bottom: .6rem; }
 details.transfert button { min-height: 40px; padding: .5rem 1rem; font-size: .9rem; }
 details.transfert p:last-child:empty { display: none; }
+
+/* ---------- Protocole de suivi ---------- */
+
+details.protocole {
+  margin-top: 1.4rem; border: 1px solid var(--line);
+  border-radius: var(--radius-s); background: var(--surface-2); padding: .7rem .9rem;
+}
+details.protocole > summary {
+  cursor: pointer; color: var(--txt); font-size: .92rem; font-weight: 600;
+  min-height: var(--touche); padding: .6rem 0;
+  display: flex; align-items: center; gap: .5rem;
+}
+.pastille-ok, .pastille-off {
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 700;
+  padding: .12rem .5rem; border-radius: 99px;
+}
+.pastille-ok { background: var(--bon-fond); color: var(--bon); }
+.pastille-off { background: var(--surface-3); color: var(--txt2); }
+.protocole-etapes { padding-left: 1.2rem; font-size: .92rem; }
+.protocole-etapes li { margin-bottom: .5rem; }
+details.protocole button { min-height: 38px; }
+
+.conformite {
+  border-left: 3px solid var(--line-forte); padding: .5rem .7rem; margin: .5rem 0;
+  border-radius: var(--radius-s); background: var(--surface-2); font-size: .86rem;
+}
+.conformite.ok { border-left-color: var(--bon); background: var(--bon-fond); }
+.conformite.moyen { border-left-color: var(--attention); background: var(--attention-fond); }
+.conformite.ko { border-left-color: var(--priorite); background: var(--priorite-fond); }
+.conformite .c-titre { margin: 0; font-weight: 600; }
+.conformite ul { margin: .35rem 0 0; padding-left: 1.1rem; color: var(--txt2); }
 </style>
 </head>
 <body>
@@ -2822,6 +2853,18 @@ function analyser({ frames, largeur, hauteur, tauxDetection, fenetre = null }, p
     mainDominante,
     profil: { ...profil, angle: camera.angle },
     camera,
+    // Conditions de prise de vue : ce qui doit rester constant d'une séance à l'autre
+    // pour que deux analyses soient comparables (voir js/protocole.js).
+    conditions: {
+      angleCamera: camera.angle,
+      confianceAngle: camera.confiance,
+      tailleJoueur: mediane(series.filter((s) => s.ok).map((s) => s.tronc)),
+      tauxDetection,
+      fps: fenetre?.fps ?? null,
+      duree: fenetre ? Math.round(fenetre.fin - fenetre.debut) : null,
+      coup: profil.coup || 'auto',
+      nbFrappes: frappes.length,
+    },
     diagnostic,
     detectionSouple,
     duree,
@@ -2995,6 +3038,9 @@ function enregistrer(analyse, echantillon = null, empreinte = null) {
     date: new Date().toISOString(),
     empreinte,                       // permet de reconnaître la même vidéo plus tard
     reglages: analyse.reglages || null,
+    // Conditions de prise de vue : sans elles, impossible de savoir si deux séances
+    // sont comparables ou si c'est la caméra qui a bougé.
+    conditions: analyse.conditions || null,
     score: analyse.score,
     nbFrappes: analyse.frappes.length,
     duree: Math.round(analyse.duree * 10) / 10,
@@ -3411,6 +3457,118 @@ function importerHistorique(donnees) {
   };
 }
 
+/* ===== js/protocole.js ===== */
+/**
+ * Protocole de suivi : rendre deux séances réellement comparables.
+ *
+ * Une caméra déplacée suffit à changer les mesures : sur un même geste filmé de face
+ * puis de côté, l'amplitude d'accompagnement varie du tout au tout, la rotation du buste
+ * du simple au double. Sans conditions constantes, une courbe de progression mesure donc
+ * autant le trépied que le joueur.
+ *
+ * D'où ce protocole : mêmes conditions, une fois par mois. La première séance devient la
+ * référence ; les suivantes sont comparées à elle, et l'app dit franchement lesquelles
+ * sont comparables et lesquelles ne le sont pas.
+ */
+
+const CLE_REFERENCE = 'dial-tennis-protocole';
+
+/** La marche à suivre, volontairement courte : un protocole qu'on ne suit pas ne sert à rien. */
+const PROTOCOLE = [
+  { titre: 'Le même endroit', detail: "Le même court, le même côté, le même fond derrière toi." },
+  { titre: 'La même position de caméra', detail: "Repère un point fixe (un poteau, une ligne) et pose le téléphone au même endroit, à la même hauteur — hauteur de hanche — et à la même distance, 5 à 8 m. Prends une photo de l'installation la première fois : tu la refais en dix secondes les fois suivantes." },
+  { titre: 'Le même exercice', detail: "Le même coup, alimenté de la même façon (panier, mur, partenaire), à intensité normale — pas à fond." },
+  { titre: 'Trois minutes', detail: "Assez pour 15 à 20 frappes exploitables, assez court pour le refaire sans y penser." },
+  { titre: 'Une fois par mois', detail: "Plus souvent, tu mesures la forme du jour ; moins souvent, tu perds le fil." },
+];
+
+/** Ce qui doit rester constant, et l'écart au-delà duquel la comparaison ne tient plus. */
+const CRITERES = [
+  {
+    cle: 'angleCamera', libelle: 'Position de la caméra', bloquant: true,
+    egal: (a, b) => a === b,
+    dire: (ref, cur) => `caméra ${LIB_ANGLE[cur] || cur} cette fois, ${LIB_ANGLE[ref] || ref} pour la référence`,
+  },
+  {
+    cle: 'coup', libelle: 'Coup filmé', bloquant: true,
+    egal: (a, b) => a === b,
+    dire: (ref, cur) => `« ${cur} » cette fois, « ${ref} » pour la référence`,
+  },
+  {
+    // La taille apparente traduit la distance caméra–joueur : elle change les mesures d'angle.
+    cle: 'tailleJoueur', libelle: 'Distance de la caméra', bloquant: false,
+    egal: (a, b) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) / a <= 0.25,
+    dire: (ref, cur) => `le joueur apparaît ${cur > ref ? 'plus grand' : 'plus petit'} qu'à la référence ` +
+      `(${Math.round(Math.abs(cur - ref) / ref * 100)} % d'écart) — la caméra a bougé en distance`,
+  },
+  {
+    cle: 'fps', libelle: 'Cadence d\'analyse', bloquant: false,
+    egal: (a, b) => a === b,
+    dire: (ref, cur) => `${cur} images/seconde cette fois, ${ref} pour la référence`,
+  },
+];
+
+const LIB_ANGLE = { cote: 'sur le côté', face: 'de face', dos: 'de dos', autre: 'en diagonale' };
+
+function lireReference() {
+  try {
+    const brut = localStorage.getItem(CLE_REFERENCE);
+    return brut ? JSON.parse(brut) : null;
+  } catch {
+    return null;
+  }
+}
+
+function definirReference(entree) {
+  if (!entree?.conditions) return null;
+  const ref = { id: entree.id, date: entree.date, conditions: entree.conditions };
+  try { localStorage.setItem(CLE_REFERENCE, JSON.stringify(ref)); } catch { return null; }
+  return ref;
+}
+
+function effacerReference() {
+  try { localStorage.removeItem(CLE_REFERENCE); } catch { /* rien à faire */ }
+}
+
+/**
+ * Compare les conditions d'une séance à celles de la référence.
+ * `comparable` est faux dès qu'un critère bloquant diffère : dans ce cas, mettre les deux
+ * séances sur la même courbe induirait en erreur, mieux vaut le dire que le masquer.
+ */
+function comparerConditions(conditions, reference = lireReference()) {
+  if (!reference?.conditions) return { statut: 'sans-reference', comparable: true, ecarts: [] };
+  if (!conditions) return { statut: 'inconnu', comparable: false, ecarts: [] };
+
+  const ecarts = [];
+  for (const critere of CRITERES) {
+    const ref = reference.conditions[critere.cle];
+    const cur = conditions[critere.cle];
+    if (ref === undefined || ref === null || cur === undefined || cur === null) continue;
+    if (!critere.egal(ref, cur)) {
+      ecarts.push({ cle: critere.cle, libelle: critere.libelle, bloquant: critere.bloquant,
+        texte: critere.dire(ref, cur) });
+    }
+  }
+
+  const bloquants = ecarts.filter((e) => e.bloquant);
+  return {
+    statut: !ecarts.length ? 'conforme' : bloquants.length ? 'incomparable' : 'ecart-mineur',
+    comparable: !bloquants.length,
+    ecarts,
+  };
+}
+
+/** Résumé lisible d'une comparaison, pour l'afficher sans reformuler à chaque endroit. */
+function resumerConformite(bilan) {
+  return {
+    'sans-reference': "Aucune séance de référence définie : les comparaisons dans le temps ne sont pas garanties.",
+    conforme: "Conditions identiques à ta séance de référence : cette analyse est comparable aux autres.",
+    'ecart-mineur': "Conditions proches de la référence, avec des écarts mineurs : à lire avec un peu de recul.",
+    incomparable: "Conditions différentes de ta séance de référence : les chiffres ne sont pas comparables aux autres séances.",
+    inconnu: "Séance enregistrée avant la mise en place du protocole : conditions inconnues.",
+  }[bilan.statut];
+}
+
 /* ===== js/ai.js ===== */
 /**
  * Analyse approfondie facultative via l'API Claude (Anthropic), appelée directement
@@ -3749,6 +3907,7 @@ async function echanger({ apiKey, base, messages, onStatut }) {
 /**
  * Orchestration de l'interface.
  */
+
 
 
 
@@ -4620,6 +4779,75 @@ function frisePresence(presence, dates) {
  * Elle vit dans le Bilan, qui est la vue « toutes mes séances » ; la Progression, elle,
  * ne s'occupe que d'une mesure au fil du temps.
  */
+/**
+ * Protocole de suivi. Une caméra déplacée suffit à changer les mesures : sur un même geste,
+ * l'amplitude d'accompagnement varie du tout au tout entre une prise de face et une prise de
+ * côté. Sans conditions constantes, une courbe de progression mesure donc autant le trépied
+ * que le joueur. Ce bloc fixe une séance de référence et signale celles qui s'en écartent.
+ */
+function rendreProtocole(vue) {
+  const bloc = el('details', 'protocole');
+  const ref = lireReference();
+  bloc.innerHTML = `<summary>Protocole de suivi ${ref ? '<span class="pastille-ok">actif</span>' : '<span class="pastille-off">à définir</span>'}</summary>`;
+
+  bloc.appendChild(el('p', null,
+    "Pour comparer deux séances, il faut que seule ta technique ait changé entre les deux. " +
+    "Une caméra déplacée de quelques mètres, et les chiffres bougent sans que toi tu aies bougé."));
+
+  const liste = el('ol', 'protocole-etapes');
+  for (const etape of PROTOCOLE) {
+    liste.appendChild(el('li', null,
+      `<strong>${echapper(etape.titre)}.</strong> ${echapper(etape.detail)}`));
+  }
+  bloc.appendChild(liste);
+
+  if (ref) {
+    bloc.appendChild(el('p', 'note',
+      `Séance de référence : ${echapper(dateLongue(ref.date))} — ` +
+      `caméra ${echapper({ cote: 'sur le côté', face: 'de face', dos: 'de dos', autre: 'en diagonale' }[ref.conditions.angleCamera] || '?')}, ` +
+      `${echapper(String(ref.conditions.fps))} images/seconde.`));
+  } else {
+    bloc.appendChild(el('p', 'note',
+      "Aucune séance de référence pour l'instant. Filme une séance dans de bonnes conditions, " +
+      "puis désigne-la comme référence depuis la liste ci-dessous : les suivantes lui seront comparées."));
+  }
+
+  const actions = el('div', 'actions');
+  if (etat.analyse?.conditions && etat.idHistorique) {
+    const definir = el('button', 'primary mini', "Faire de l'analyse ouverte ma référence");
+    definir.type = 'button';
+    definir.addEventListener('click', () => {
+      definirReference({ id: etat.idHistorique, date: new Date().toISOString(),
+        conditions: etat.analyse.conditions });
+      rendreBilan();
+    });
+    actions.appendChild(definir);
+  }
+  if (ref) {
+    const oublier = el('button', 'ghost mini', 'Oublier la référence');
+    oublier.type = 'button';
+    oublier.addEventListener('click', () => { effacerReference(); rendreBilan(); });
+    actions.appendChild(oublier);
+  }
+  if (actions.children.length) bloc.appendChild(actions);
+  vue.appendChild(bloc);
+}
+
+/** Étiquette de conformité d'une séance, à poser sur sa carte dans la liste. */
+function etiquetteConformite(entree) {
+  const bilan = comparerConditions(entree.conditions);
+  if (bilan.statut === 'sans-reference') return null;
+
+  const classe = { conforme: 'ok', 'ecart-mineur': 'moyen', incomparable: 'ko', inconnu: 'moyen' }[bilan.statut];
+  const bloc = el('div', `conformite ${classe}`);
+  bloc.appendChild(el('p', 'c-titre', echapper(resumerConformite(bilan))));
+  if (bilan.ecarts.length) {
+    bloc.appendChild(el('ul', null, bilan.ecarts
+      .map((e) => `<li>${echapper(e.libelle)} : ${echapper(e.texte)}</li>`).join('')));
+  }
+  return bloc;
+}
+
 function rendreJournal(vue, liste) {
   vue.appendChild(el('h3', null, 'Tes analyses'));
   const journal = el('div', 'journal');
@@ -4635,6 +4863,9 @@ function rendreJournal(vue, liste) {
     carte.appendChild(el('p', 'note',
       `${echapper(coups)} — ${e.nbFrappes} frappe(s) sur ${Number(e.duree || 0).toFixed(0)} s` +
       (e.profil?.objectif ? ` · objectif : « ${echapper(e.profil.objectif)} »` : '')));
+
+    const conformite = etiquetteConformite(e);
+    if (conformite) carte.appendChild(conformite);
 
     const actions = el('div', 'actions');
     if (estRouvrable(e)) {
@@ -4759,8 +4990,11 @@ function rendreBilan() {
     vue.appendChild(el('p', 'note',
       "Le bilan croise les constats de toutes tes séances pour montrer ce qui revient. " +
       "Il se remplit dès ta première analyse."));
+    // Le protocole se lit AVANT de filmer : c'est une préparation, pas un bilan.
+    rendreProtocole(vue);
     return;
   }
+  rendreProtocole(vue);
 
   vue.appendChild(el('p', null,
     `Sur <strong>${seances} séance${seances > 1 ? 's' : ''}</strong> analysée${seances > 1 ? 's' : ''}, ` +

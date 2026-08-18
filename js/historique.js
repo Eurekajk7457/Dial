@@ -149,6 +149,9 @@ export function enregistrer(analyse, echantillon = null, empreinte = null) {
     date: new Date().toISOString(),
     empreinte,                       // permet de reconnaître la même vidéo plus tard
     reglages: analyse.reglages || null,
+    // Conditions de prise de vue : sans elles, impossible de savoir si deux séances
+    // sont comparables ou si c'est la caméra qui a bougé.
+    conditions: analyse.conditions || null,
     score: analyse.score,
     nbFrappes: analyse.frappes.length,
     duree: Math.round(analyse.duree * 10) / 10,

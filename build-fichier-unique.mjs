@@ -16,7 +16,8 @@ const racine = dirname(fileURLToPath(import.meta.url));
 const lire = (p) => readFileSync(join(racine, p), 'utf8');
 
 // L'ordre compte : chaque fichier ne doit utiliser que ce qui précède.
-const MODULES = ['js/knowledge.js', 'js/pose.js', 'js/analyse.js', 'js/historique.js', 'js/ai.js', 'js/app.js'];
+const MODULES = ['js/knowledge.js', 'js/pose.js', 'js/analyse.js', 'js/historique.js',
+  'js/protocole.js', 'js/ai.js', 'js/app.js'];
 
 const deModule = (src) => src
   .replace(/^import\s[^;]*;\s*$/gm, '')     // les imports n'ont plus lieu d'être

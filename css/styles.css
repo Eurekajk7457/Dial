@@ -607,3 +607,34 @@ details.transfert > summary {
 details.transfert .actions { margin-bottom: .6rem; }
 details.transfert button { min-height: 40px; padding: .5rem 1rem; font-size: .9rem; }
 details.transfert p:last-child:empty { display: none; }
+
+/* ---------- Protocole de suivi ---------- */
+
+details.protocole {
+  margin-top: 1.4rem; border: 1px solid var(--line);
+  border-radius: var(--radius-s); background: var(--surface-2); padding: .7rem .9rem;
+}
+details.protocole > summary {
+  cursor: pointer; color: var(--txt); font-size: .92rem; font-weight: 600;
+  min-height: var(--touche); padding: .6rem 0;
+  display: flex; align-items: center; gap: .5rem;
+}
+.pastille-ok, .pastille-off {
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 700;
+  padding: .12rem .5rem; border-radius: 99px;
+}
+.pastille-ok { background: var(--bon-fond); color: var(--bon); }
+.pastille-off { background: var(--surface-3); color: var(--txt2); }
+.protocole-etapes { padding-left: 1.2rem; font-size: .92rem; }
+.protocole-etapes li { margin-bottom: .5rem; }
+details.protocole button { min-height: 38px; }
+
+.conformite {
+  border-left: 3px solid var(--line-forte); padding: .5rem .7rem; margin: .5rem 0;
+  border-radius: var(--radius-s); background: var(--surface-2); font-size: .86rem;
+}
+.conformite.ok { border-left-color: var(--bon); background: var(--bon-fond); }
+.conformite.moyen { border-left-color: var(--attention); background: var(--attention-fond); }
+.conformite.ko { border-left-color: var(--priorite); background: var(--priorite-fond); }
+.conformite .c-titre { margin: 0; font-weight: 600; }
+.conformite ul { margin: .35rem 0 0; padding-left: 1.1rem; color: var(--txt2); }

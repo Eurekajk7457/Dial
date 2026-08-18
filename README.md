@@ -205,9 +205,47 @@ js/pose.js          Chargement MediaPipe, échantillonnage vidéo, géométrie
 js/analyse.js       Séries temporelles, détection de frappes, mesures, moteur de règles
 js/knowledge.js     Référentiel technique, seuils de coaching, explications des mesures, vidéos
 js/historique.js    Suivi dans le temps (localStorage), réouverture d'une analyse, courbe, bilan croisé
+js/protocole.js     Protocole de suivi : séance de référence et comparabilité des conditions
 js/ai.js            Appel API Claude (vision + recherche web)
 js/app.js           Interface, menu, rendu, verdicts, squelette, onglets
 ```
+
+## Validation face à une vérité connue
+
+Trois vérifications, toutes reproductibles depuis le scratchpad de développement.
+
+**Déterminisme** (`determinisme.mjs`). Le même contenu analysé trois fois donne un résultat
+strictement identique — score, médianes, constats. La chaîne d'analyse ne contient aucun aléa.
+Réserve : ce test porte sur l'analyse, pas sur la détection de posture elle-même, dont la
+reproductibilité dépend du GPU et de l'échantillonnage vidéo.
+
+**Invariance à la caméra** (`deux-angles.mjs`). Le même geste, construit en 3D, projeté depuis
+trois positions de caméra. C'est le résultat le plus inconfortable de tout le projet :
+
+| Mesure | de face | trois quarts | de côté | écart |
+|---|---|---|---|---|
+| Flexion des jambes | 178° | 170° | 168° | **6 %** |
+| Hauteur d'impact | 0,53 | 0,60 | 0,67 | 20 % |
+| Angle du coude | 101° | 90° | 80° | 21 % |
+| Rotation du buste | 0,17 | 0,26 | 0,35 | 50 % |
+| Accompagnement | 0,99 | 0,49 | 0,00 | **100 %** |
+
+Moyenner sur plusieurs images protège du bruit temporel, pas de la perte d'un axe à la
+projection. Seule la flexion des jambes est réellement robuste. D'où le protocole ci-dessous :
+**deux séances filmées différemment ne sont pas comparables**, et l'app le dit désormais au lieu
+de tracer une courbe trompeuse. (Chiffres issus d'un mannequin 3D simplifié : ordres de grandeur
+fiables, pas la deuxième décimale.)
+
+**Comptage face à la vérité** (`precision.mjs`). Rappel et précision de la détection de frappes
+sur neuf situations dont le nombre et l'instant des frappes sont connus — voir le tableau suivant.
+
+## Protocole de suivi
+
+Pour qu'une courbe sur trois ans mesure le joueur et non le trépied, l'app propose un protocole
+en cinq points (même endroit, même position de caméra, même exercice, trois minutes, une fois par
+mois) et une **séance de référence**. Chaque séance suivante est comparée à elle : position de
+caméra et coup filmé sont bloquants (les chiffres sont déclarés non comparables), distance et
+cadence donnent un avertissement. Le verdict s'affiche sur chaque séance dans l'onglet Bilan.
 
 ## Précision mesurée
 

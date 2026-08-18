@@ -1264,6 +1264,18 @@ export function analyser({ frames, largeur, hauteur, tauxDetection, fenetre = nu
     mainDominante,
     profil: { ...profil, angle: camera.angle },
     camera,
+    // Conditions de prise de vue : ce qui doit rester constant d'une séance à l'autre
+    // pour que deux analyses soient comparables (voir js/protocole.js).
+    conditions: {
+      angleCamera: camera.angle,
+      confianceAngle: camera.confiance,
+      tailleJoueur: mediane(series.filter((s) => s.ok).map((s) => s.tronc)),
+      tauxDetection,
+      fps: fenetre?.fps ?? null,
+      duree: fenetre ? Math.round(fenetre.fin - fenetre.debut) : null,
+      coup: profil.coup || 'auto',
+      nbFrappes: frappes.length,
+    },
     diagnostic,
     detectionSouple,
     duree,

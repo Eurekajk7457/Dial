@@ -10,6 +10,10 @@ import {
   FONDAMENTAUX, RESSOURCES, RESULTATS_BALLE, PRISES,
   EXPLICATIONS, CHAINES_VIDEO, videoYouTube, videoConstat, libelleZone,
 } from './knowledge.js';
+import {
+  PROTOCOLE, lireReference, definirReference, effacerReference,
+  comparerConditions, resumerConformite,
+} from './protocole.js';
 import { analyserAvecClaude, poserQuestion } from './ai.js';
 import {
   enregistrer, lireHistorique, supprimer, toutEffacer, coupsPresents,
@@ -884,6 +888,75 @@ function frisePresence(presence, dates) {
  * Elle vit dans le Bilan, qui est la vue « toutes mes séances » ; la Progression, elle,
  * ne s'occupe que d'une mesure au fil du temps.
  */
+/**
+ * Protocole de suivi. Une caméra déplacée suffit à changer les mesures : sur un même geste,
+ * l'amplitude d'accompagnement varie du tout au tout entre une prise de face et une prise de
+ * côté. Sans conditions constantes, une courbe de progression mesure donc autant le trépied
+ * que le joueur. Ce bloc fixe une séance de référence et signale celles qui s'en écartent.
+ */
+function rendreProtocole(vue) {
+  const bloc = el('details', 'protocole');
+  const ref = lireReference();
+  bloc.innerHTML = `<summary>Protocole de suivi ${ref ? '<span class="pastille-ok">actif</span>' : '<span class="pastille-off">à définir</span>'}</summary>`;
+
+  bloc.appendChild(el('p', null,
+    "Pour comparer deux séances, il faut que seule ta technique ait changé entre les deux. " +
+    "Une caméra déplacée de quelques mètres, et les chiffres bougent sans que toi tu aies bougé."));
+
+  const liste = el('ol', 'protocole-etapes');
+  for (const etape of PROTOCOLE) {
+    liste.appendChild(el('li', null,
+      `<strong>${echapper(etape.titre)}.</strong> ${echapper(etape.detail)}`));
+  }
+  bloc.appendChild(liste);
+
+  if (ref) {
+    bloc.appendChild(el('p', 'note',
+      `Séance de référence : ${echapper(dateLongue(ref.date))} — ` +
+      `caméra ${echapper({ cote: 'sur le côté', face: 'de face', dos: 'de dos', autre: 'en diagonale' }[ref.conditions.angleCamera] || '?')}, ` +
+      `${echapper(String(ref.conditions.fps))} images/seconde.`));
+  } else {
+    bloc.appendChild(el('p', 'note',
+      "Aucune séance de référence pour l'instant. Filme une séance dans de bonnes conditions, " +
+      "puis désigne-la comme référence depuis la liste ci-dessous : les suivantes lui seront comparées."));
+  }
+
+  const actions = el('div', 'actions');
+  if (etat.analyse?.conditions && etat.idHistorique) {
+    const definir = el('button', 'primary mini', "Faire de l'analyse ouverte ma référence");
+    definir.type = 'button';
+    definir.addEventListener('click', () => {
+      definirReference({ id: etat.idHistorique, date: new Date().toISOString(),
+        conditions: etat.analyse.conditions });
+      rendreBilan();
+    });
+    actions.appendChild(definir);
+  }
+  if (ref) {
+    const oublier = el('button', 'ghost mini', 'Oublier la référence');
+    oublier.type = 'button';
+    oublier.addEventListener('click', () => { effacerReference(); rendreBilan(); });
+    actions.appendChild(oublier);
+  }
+  if (actions.children.length) bloc.appendChild(actions);
+  vue.appendChild(bloc);
+}
+
+/** Étiquette de conformité d'une séance, à poser sur sa carte dans la liste. */
+function etiquetteConformite(entree) {
+  const bilan = comparerConditions(entree.conditions);
+  if (bilan.statut === 'sans-reference') return null;
+
+  const classe = { conforme: 'ok', 'ecart-mineur': 'moyen', incomparable: 'ko', inconnu: 'moyen' }[bilan.statut];
+  const bloc = el('div', `conformite ${classe}`);
+  bloc.appendChild(el('p', 'c-titre', echapper(resumerConformite(bilan))));
+  if (bilan.ecarts.length) {
+    bloc.appendChild(el('ul', null, bilan.ecarts
+      .map((e) => `<li>${echapper(e.libelle)} : ${echapper(e.texte)}</li>`).join('')));
+  }
+  return bloc;
+}
+
 function rendreJournal(vue, liste) {
   vue.appendChild(el('h3', null, 'Tes analyses'));
   const journal = el('div', 'journal');
@@ -899,6 +972,9 @@ function rendreJournal(vue, liste) {
     carte.appendChild(el('p', 'note',
       `${echapper(coups)} — ${e.nbFrappes} frappe(s) sur ${Number(e.duree || 0).toFixed(0)} s` +
       (e.profil?.objectif ? ` · objectif : « ${echapper(e.profil.objectif)} »` : '')));
+
+    const conformite = etiquetteConformite(e);
+    if (conformite) carte.appendChild(conformite);
 
     const actions = el('div', 'actions');
     if (estRouvrable(e)) {
@@ -1023,8 +1099,11 @@ function rendreBilan() {
     vue.appendChild(el('p', 'note',
       "Le bilan croise les constats de toutes tes séances pour montrer ce qui revient. " +
       "Il se remplit dès ta première analyse."));
+    // Le protocole se lit AVANT de filmer : c'est une préparation, pas un bilan.
+    rendreProtocole(vue);
     return;
   }
+  rendreProtocole(vue);
 
   vue.appendChild(el('p', null,
     `Sur <strong>${seances} séance${seances > 1 ? 's' : ''}</strong> analysée${seances > 1 ? 's' : ''}, ` +
