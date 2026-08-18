@@ -127,7 +127,7 @@ const MESURES_FRAPPE = [
  * Résumé compact d'une analyse, plus le détail nécessaire pour la rouvrir telle quelle.
  * Ce qui n'est pas gardé : les images (trop lourdes) et les points de posture image par image.
  */
-export function enregistrer(analyse, echantillon = null) {
+export function enregistrer(analyse, echantillon = null, empreinte = null) {
   if (!analyse?.frappes?.length) return null;
 
   const detail = {
@@ -147,6 +147,8 @@ export function enregistrer(analyse, echantillon = null) {
     detail,
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     date: new Date().toISOString(),
+    empreinte,                       // permet de reconnaître la même vidéo plus tard
+    reglages: analyse.reglages || null,
     score: analyse.score,
     nbFrappes: analyse.frappes.length,
     duree: Math.round(analyse.duree * 10) / 10,
@@ -453,4 +455,50 @@ export function bilanConstats(liste = lireHistorique()) {
     || a.titre.localeCompare(b.titre));
 
   return { seances: seances.length, ignorees, dates, items };
+}
+
+/* ------------------------------------------------------------------ */
+/* Reconnaître une vidéo déjà analysée                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Empreinte d'un fichier vidéo, pour reconnaître une vidéo déjà analysée sans
+ * la relire entièrement : on hache sa taille et trois tranches (début, milieu, fin).
+ * Deux vidéos différentes ne peuvent pas donner la même empreinte, et renommer un
+ * fichier n'en change pas l'empreinte — ce que ferait un simple « nom + taille ».
+ *
+ * `crypto.subtle` n'existe qu'en contexte sécurisé ; ouvert d'un double-clic en
+ * `file://`, on retombe sur nom + taille + date, moins fin mais suffisant.
+ */
+export async function empreinteFichier(fichier) {
+  const secours = `n:${fichier.name}|${fichier.size}|${fichier.lastModified}`;
+  if (!globalThis.crypto?.subtle) return secours;
+
+  try {
+    const TRANCHE = 256 * 1024;
+    const milieu = Math.max(0, Math.floor(fichier.size / 2) - TRANCHE / 2);
+    const morceaux = await Promise.all([
+      fichier.slice(0, TRANCHE).arrayBuffer(),
+      fichier.slice(milieu, milieu + TRANCHE).arrayBuffer(),
+      fichier.slice(Math.max(0, fichier.size - TRANCHE)).arrayBuffer(),
+    ]);
+
+    const entete = new TextEncoder().encode(`${fichier.size}|`);
+    const total = entete.byteLength + morceaux.reduce((n, m) => n + m.byteLength, 0);
+    const tampon = new Uint8Array(total);
+    let pos = 0;
+    tampon.set(entete, pos); pos += entete.byteLength;
+    for (const m of morceaux) { tampon.set(new Uint8Array(m), pos); pos += m.byteLength; }
+
+    const hache = await crypto.subtle.digest('SHA-256', tampon);
+    return [...new Uint8Array(hache)].map((o) => o.toString(16).padStart(2, '0')).join('').slice(0, 32);
+  } catch {
+    return secours;
+  }
+}
+
+/** La dernière analyse faite à partir de cette vidéo, s'il y en a une. */
+export function trouverParEmpreinte(empreinte, liste = lireHistorique()) {
+  if (!empreinte) return null;
+  return [...liste].reverse().find((e) => e.empreinte === empreinte) || null;
 }

@@ -580,3 +580,16 @@ details.ia-config > summary { cursor: pointer; color: var(--txt2); font-size: .9
 .plan h3 { margin-bottom: .5rem; color: var(--primaire-fonce); }
 .plan ol { margin: 0; padding-left: 1.2rem; font-size: .93rem; }
 .plan li { margin-bottom: .5rem; }
+
+/* ---------- Vidéo déjà analysée ---------- */
+
+.deja-vue {
+  border: 1px solid var(--line-forte); border-left: 4px solid var(--primaire);
+  background: var(--primaire-clair); border-radius: var(--radius-s);
+  padding: .9rem 1rem; margin-bottom: 1rem;
+}
+.deja-vue.insistant { border-left-color: var(--attention); background: var(--attention-fond); border-color: #f0dfc4; }
+.dv-titre { font-weight: 700; margin-bottom: .3rem; }
+.deja-vue .note { margin-bottom: .8rem; }
+.deja-vue .actions { gap: .5rem; }
+.deja-vue button { min-height: 40px; padding: .5rem 1rem; font-size: .9rem; }

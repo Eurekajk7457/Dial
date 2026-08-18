@@ -57,7 +57,14 @@ que sur ordinateur ; sur mobile, « Ajouter à l'écran d'accueil » donne une i
     et remonte ce qui se fait de mieux au moment du clic.
 14. **Menu** en quatre entrées (Analyser / Mes analyses / Questions / Apprendre), visibles sans
     défilement même sur un petit écran.
-15. **Bilan sur toutes les séances** : les constats sont regroupés par titre et par coup, puis classés
+15. **Vidéo déjà analysée** : chaque fichier reçoit une empreinte (SHA-256 de sa taille et de trois
+    tranches — début, milieu, fin), calculée sans relire tout le fichier. Recharger la même vidéo
+    affiche aussitôt « tu as déjà analysé cette vidéo », avec sa date, son score, et le choix entre
+    rouvrir l'analyse existante ou refaire quand même. Renommer le fichier ne trompe pas la
+    détection ; changer les réglages (début, durée, images/seconde) relance normalement, puisque
+    c'est un autre extrait. En `file://`, sans `crypto.subtle`, l'empreinte retombe sur
+    nom + taille + date.
+16. **Bilan sur toutes les séances** : les constats sont regroupés par titre et par coup, puis classés
     en *récurrent* (présent sur la dernière séance et vu au moins deux fois), *nouveau*, *réglé*
     (présent avant, absent de la dernière), *point fort acquis* et *point fort perdu de vue*. Chaque
     entrée porte une frise d'une pastille par séance, un compteur « vu sur N séances sur M », et les

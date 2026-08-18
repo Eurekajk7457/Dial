@@ -15,6 +15,7 @@ import {
   enregistrer, lireHistorique, supprimer, toutEffacer, coupsPresents,
   serie, tracerCourbe, commenterEvolution, MESURES_SUIVIES,
   lireAnalyse, estRouvrable, actualiserResultats, bilanConstats,
+  empreinteFichier, trouverParEmpreinte,
 } from './historique.js';
 
 /**
@@ -39,8 +40,23 @@ const etat = {
   echantillon: null,
   analyse: null,
   idHistorique: null,   // entrée d'historique correspondant à l'analyse affichée
+  empreinte: null,      // empreinte de la vidéo chargée, pour reconnaître un doublon
+  dejaVue: null,        // l'analyse déjà faite à partir de cette même vidéo
+  forcerReanalyse: false,
   conversation: null,   // mémoire de l'échange avec l'entraîneur IA
 };
+
+/** Les réglages d'échantillonnage : la même vidéo analysée autrement est une autre analyse. */
+function lireReglages() {
+  return {
+    debut: Number($('#opt-debut').value) || 0,
+    duree: Number($('#opt-duree').value) || 30,
+    fps: Number($('#opt-fps').value) || 12,
+  };
+}
+
+const memesReglages = (a, b) =>
+  !!a && !!b && a.debut === b.debut && a.duree === b.duree && a.fps === b.fps;
 
 /** Ce que le joueur a renseigné sur lui et sur la vidéo. */
 function lireProfil() {
@@ -107,6 +123,67 @@ function chargerVideo(fichier) {
     $('#opt-debut').max = Math.max(0, Math.floor(duree - 2));
     dimensionnerOverlay();
   }, { once: true });
+
+  reconnaitreVideo(fichier);
+}
+
+/**
+ * Prévient tout de suite si cette vidéo a déjà été analysée : refaire tourner la
+ * détection sur un téléphone coûte une minute et de la batterie pour un résultat
+ * identique. On propose donc de rouvrir l'analyse existante — sans jamais l'imposer.
+ */
+async function reconnaitreVideo(fichier) {
+  const zone = $('#deja-vue');
+  zone.hidden = true;
+  zone.innerHTML = '';
+  etat.empreinte = null;
+  etat.dejaVue = null;
+  etat.forcerReanalyse = false;
+
+  const empreinte = await empreinteFichier(fichier);
+  if (etat.fichier !== fichier) return;      // une autre vidéo a été chargée entre-temps
+  etat.empreinte = empreinte;
+
+  const dejaVue = trouverParEmpreinte(empreinte);
+  if (!dejaVue) return;
+  etat.dejaVue = dejaVue;
+  afficherDejaVue(dejaVue);
+}
+
+function afficherDejaVue(entree, insistant = false) {
+  const zone = $('#deja-vue');
+  zone.innerHTML = '';
+  zone.classList.toggle('insistant', insistant);
+
+  const coups = (entree.groupes || []).map((g) => `${g.libelle} ×${g.nombre}`).join(', ');
+  zone.appendChild(el('p', 'dv-titre', insistant
+    ? 'Cette vidéo a déjà été analysée — inutile de recommencer'
+    : 'Tu as déjà analysé cette vidéo'));
+  zone.appendChild(el('p', 'note',
+    `Le ${echapper(dateLongue(entree.date))} — score ${entree.score}/100` +
+    (coups ? `, ${echapper(coups)}` : '') + '. ' +
+    (estRouvrable(entree)
+      ? "Tu peux rouvrir cette analyse tout de suite, sans attendre."
+      : "Son détail n'a pas été conservé : il faudra la relancer pour revoir les constats.")));
+
+  const actions = el('div', 'actions');
+  if (estRouvrable(entree)) {
+    const ouvrir = el('button', 'primary', "Ouvrir l'analyse existante");
+    ouvrir.type = 'button';
+    ouvrir.addEventListener('click', () => rouvrirAnalyse(entree.id));
+    actions.appendChild(ouvrir);
+  }
+  const refaire = el('button', 'ghost', 'Analyser quand même');
+  refaire.type = 'button';
+  refaire.addEventListener('click', () => {
+    etat.forcerReanalyse = true;
+    zone.hidden = true;
+    btnAnalyser.click();
+  });
+  actions.appendChild(refaire);
+  zone.appendChild(actions);
+  zone.hidden = false;
+  if (insistant) zone.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 $('#btn-reset').addEventListener('click', () => {
@@ -119,6 +196,10 @@ $('#btn-reset').addEventListener('click', () => {
   etat.echantillon = null;
   etat.analyse = null;
   etat.idHistorique = null;
+  etat.empreinte = null;
+  etat.dejaVue = null;
+  etat.forcerReanalyse = false;
+  $('#deja-vue').hidden = true;
 });
 
 $('#btn-aide').addEventListener('click', () => $('#dlg-aide').showModal());
@@ -218,28 +299,37 @@ btnAnalyser.addEventListener('click', async () => {
     return;
   }
 
+  // Même vidéo, mêmes réglages, et le joueur n'a pas demandé à refaire : on ne recalcule pas.
+  const reglages = lireReglages();
+  if (!etat.forcerReanalyse && etat.dejaVue && memesReglages(reglages, etat.dejaVue.reglages)) {
+    afficherDejaVue(etat.dejaVue, true);
+    return;
+  }
+  etat.forcerReanalyse = false;
+
   btnAnalyser.disabled = true;
   video.pause();
 
   try {
     progres(0, 'Préparation…');
     const echantillon = await echantillonner(video, {
-      debut: Number($('#opt-debut').value) || 0,
-      duree: Number($('#opt-duree').value) || 30,
-      fps: Number($('#opt-fps').value) || 12,
+      ...reglages,
       onProgres: (p, m) => progres(p * 0.95, m),
     });
     etat.echantillon = echantillon;
 
     progres(0.97, 'Calcul des mesures…');
     etat.analyse = analyser(echantillon, profil);
+    etat.analyse.reglages = reglages;
     etat.conversation = null;   // nouvelle vidéo : on repart d'une discussion vierge
 
     progres(1, 'Terminé.');
     setTimeout(() => { $('#progress').hidden = true; }, 800);
 
     // alimente le suivi dans le temps, avec le déroulé du geste pour pouvoir le rejouer
-    etat.idHistorique = enregistrer(etat.analyse, echantillon)?.id || null;
+    const entree = enregistrer(etat.analyse, echantillon, etat.empreinte);
+    etat.idHistorique = entree?.id || null;
+    etat.dejaVue = entree;      // relancer aussitôt la même analyse n'aurait pas de sens
     $('#ia-echanges').innerHTML = '';
     $('#ia-resultat').innerHTML = '';
     afficherResultats(etat.analyse);
@@ -283,6 +373,7 @@ function rouvrirAnalyse(id) {
   etat.conversation = null;     // nouvelle séance : on repart d'une discussion vierge
   $('#ia-echanges').innerHTML = '';
   $('#ia-resultat').innerHTML = '';
+  $('#deja-vue').hidden = true;
   afficherResultats(a);
 }
 
