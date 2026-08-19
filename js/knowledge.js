@@ -574,6 +574,174 @@ export const SEUILS = {
  * il faut savoir ce qu'il mesure, pourquoi ça compte, et quoi faire s'il sort de la zone.
  * `seuil` renvoie vers SEUILS ; `basEstMieux` inverse la lecture (0 = parfait).
  */
+/**
+ * Valeurs de référence publiées, avec leur source et leur convention de mesure.
+ *
+ * Les zones de SEUILS ci-dessus viennent de l'enseignement classique : elles disent ce qu'un
+ * entraîneur cherche à obtenir. Elles ne disent pas ce qui a été *mesuré* sur de vrais joueurs.
+ * C'est ce que rassemble cette table, pour que le joueur voie d'où sortent les chiffres et où
+ * la recherche ne dit pas la même chose que la consigne de club.
+ *
+ * `comparable` est le champ le plus important : la plupart de ces valeurs viennent de systèmes
+ * de capture 3D en laboratoire. Une vidéo de téléphone ne mesure pas la même chose, et le dire
+ * vaut mieux que d'aligner des chiffres qui n'ont pas le même sens.
+ *   oui     — mesurable de la même façon sur une vidéo de face ou de côté
+ *   partiel — mesurable, mais pas exactement la même grandeur
+ *   non     — hors de portée d'une caméra unique ; donné comme repère, jamais comme verdict
+ */
+export const REFERENCES = [
+  {
+    cles: ['hauteurImpact'], coups: ['coup-droit', 'revers'],
+    titre: "Hauteur de frappe des professionnels",
+    valeur: "0,95 m au-dessus du sol en moyenne — à peu près la hauteur de hanche.",
+    population: "Professionnels, Open d'Australie, coups de fond de court en situation de match",
+    source: "Reid et coll., 2016", nature: 'etude',
+    convention: "Hauteur absolue de la balle au moment du contact, mesurée depuis le sol.",
+    comparable: 'partiel',
+    lecon: "Frapper à hauteur de hanche est la norme, pas un défaut. La consigne « prends la "
+      + "balle haut » vaut pour attaquer, pas pour l'échange courant.",
+  },
+  {
+    cles: ['hauteurImpact'], coups: ['coup-droit'],
+    titre: "Distance du point d'impact devant le corps",
+    valeur: "30 à 40 cm devant le corps chez les meilleurs joueurs.",
+    population: "Joueurs professionnels de premier plan",
+    source: "Reid et coll., 2016", nature: 'etude',
+    convention: "Distance horizontale entre la balle et le tronc à l'impact.",
+    comparable: 'non',
+    lecon: "Cette distance ne se voit pas sur une vidéo filmée de face ou de derrière : il "
+      + "faudrait filmer de côté. C'est une des limites de l'analyse à une seule caméra.",
+  },
+  {
+    cles: ['rotationEpaules'], coups: ['coup-droit'],
+    titre: "Rotation du bassin et des épaules jusqu'à l'impact",
+    valeur: "Bassin 60,3° et épaules 97,6° de rotation entre la fin de préparation et l'impact.",
+    population: "Joueurs avancés, coup droit lifté, appui fermé",
+    source: "Elliott et coll., « Biomechanics of Advanced Tennis »", nature: 'synthese',
+    convention: "Rotation dans le plan horizontal, par rapport à une ligne perpendiculaire au filet.",
+    comparable: 'partiel',
+    lecon: "Les épaules tournent nettement plus que le bassin : c'est cet écart qui crée la "
+      + "vitesse, pas la rotation prise isolément.",
+  },
+  {
+    cles: ['rotationEpaules', 'vitesse'], coups: ['coup-droit'],
+    titre: "Ce qui sépare un joueur élite d'un très bon joueur",
+    valeur: "Vitesse de rotation du buste à l'impact : 453°/s chez les élites contre 292°/s chez "
+      + "les joueurs de haut niveau. Vitesse d'avancée de l'épaule : 3,0 m/s contre 2,5 m/s.",
+    population: "Joueurs élites comparés à des joueurs de haut niveau",
+    source: "Landlinger et coll., 2010", nature: 'etude',
+    convention: "Vitesses angulaire et linéaire mesurées en capture 3D.",
+    comparable: 'non',
+    lecon: "La différence entre un très bon joueur et un joueur élite se joue sur des vitesses, "
+      + "pas sur des positions. Les angles seuls ne distinguent pas les deux.",
+  },
+  {
+    cles: ['coudeImpact', 'rotationEpaules'], coups: ['revers'],
+    titre: "Revers à une main et à deux mains : ce n'est pas le même coup",
+    valeur: "Alignement des épaules en fin de préparation : 119,1° à une main contre 83,4° à deux "
+      + "mains. Impact plus avancé à une main : 0,59 m contre 0,40 m.",
+    population: "Joueurs entraînés, comparaison directe des deux techniques",
+    source: "Revue des revers à une et deux mains, 2003", nature: 'synthese',
+    convention: "Angle des épaules dans le plan horizontal ; distance de l'impact devant le corps.",
+    comparable: 'partiel',
+    lecon: "Écart mesuré de 36° sur la rotation entre les deux revers. Juger un revers à une "
+      + "main avec les repères d'un revers à deux mains est une erreur de méthode.",
+  },
+  {
+    cles: ['coudeImpact'], coups: ['revers'],
+    titre: "Extension du bras à l'impact en revers",
+    valeur: "Environ 160 à 175° à une main, 140 à 160° à deux mains.",
+    population: "Repères d'analyse technique, non issus d'une étude évaluée par des pairs",
+    source: "Documentation d'un outil d'analyse vidéo", nature: 'site-technique',
+    convention: "Angle intérieur du coude, 180° = bras tendu.",
+    comparable: 'oui',
+    lecon: "À une main le bras se tend presque complètement pour aller chercher la balle ; à "
+      + "deux mains il reste fléchi. Ce repère converge avec la zone utilisée par l'app.",
+  },
+  {
+    cles: ['coudeImpact'], coups: ['coup-droit'],
+    titre: "Un désaccord assumé sur l'angle du coude en coup droit",
+    valeur: "Une étude rapporte une moyenne de 106° au contact, et conseille un coude légèrement "
+      + "fléchi pour réduire la résistance à la rotation.",
+    population: "Joueurs mesurés en laboratoire",
+    source: "Irawan et coll. — analyse biomécanique du coup droit", nature: 'etude',
+    convention: "Non précisée dans le résumé : selon la convention retenue, 106° peut désigner "
+      + "un bras très fléchi ou au contraire proche de l'extension.",
+    comparable: 'partiel',
+    lecon: "Cette valeur ne cadre pas avec la zone de 140 à 172° utilisée par l'app. Faute de "
+      + "savoir comment l'angle a été défini, l'app garde sa zone et affiche le désaccord "
+      + "plutôt que de le masquer.",
+  },
+  {
+    cles: ['flexionService'], coups: ['service'],
+    titre: "Flexion des genoux au service",
+    valeur: "110 à 120° est la norme couramment citée. Un entraînement ayant augmenté la flexion "
+      + "de 31° a fait gagner 1,38 km/h de vitesse de raquette.",
+    population: "Joueurs juniors et intermédiaires ; norme d'entraînement établie",
+    source: "Revue de biomécanique du service ; essai d'entraînement, 2025", nature: 'etude',
+    convention: "Angle intérieur du genou au point le plus bas, 180° = jambe tendue.",
+    comparable: 'oui',
+    lecon: "Plus de flexion réduit aussi les contraintes mesurées au coude et à l'épaule : "
+      + "c'est autant une question de blessure que de puissance.",
+  },
+  {
+    cles: ['flexionGenou'], coups: ['coup-droit', 'revers'],
+    titre: "La flexion des jambes dépend de la situation de jeu",
+    valeur: "Flexion maximale significativement plus marquée en appui ouvert défensif qu'en "
+      + "appui ouvert ou neutre offensif. Les joueurs de haut niveau ne fléchissent que "
+      + "légèrement plus tôt que les autres.",
+    population: "Revue systématique des analyses biomécaniques du service et des coups de fond",
+    source: "Revue systématique, PLOS One, 2023", nature: 'synthese',
+    convention: "Angle du genou en capture 3D, selon la position d'appui.",
+    comparable: 'oui',
+    lecon: "Une seule zone ne peut pas juger la flexion hors contexte : un joueur en défense "
+      + "fléchit davantage, et c'est correct. À lire avec la situation, pas seule.",
+  },
+  {
+    cles: ['vitesse'], coups: ['coup-droit'],
+    titre: "D'où vient réellement la vitesse de raquette",
+    valeur: "Rotation interne du bras autour de son axe : environ 35 %. Flexion horizontale de "
+      + "l'épaule : environ 25 %. Extension de l'avant-bras : 17 à 21 %.",
+    population: "Joueurs élites, capteurs inertiels, coup droit d'attaque",
+    source: "Étude par capteurs inertiels, Sensors, 2022", nature: 'etude',
+    convention: "Contribution de chaque rotation à la vitesse de la tête de raquette.",
+    comparable: 'non',
+    lecon: "Le premier contributeur à la vitesse est une rotation du bras sur lui-même, "
+      + "invisible pour une caméra unique. Aucune app vidéo, celle-ci comprise, ne la mesure.",
+  },
+];
+
+/**
+ * Marge d'erreur propre à la mesure par vidéo, sous laquelle aucune différence n'est réelle.
+ *
+ * L'estimation de posture par caméra unique se trompe en moyenne d'une dizaine de degrés sur
+ * les angles articulaires en mouvement rapide, et de 2 à 4 cm sur la position des articulations
+ * — le coude étant le pire cas. Conclure « 148° au lieu de 140, il faut corriger » revient donc
+ * à commenter le bruit de la mesure. L'app refuse ces verdicts-là.
+ *
+ * Sources : Van Hooren et coll., 2023 (course, marche, vélo : 3 à 4° d'erreur moyenne) ;
+ * repères d'estimation de posture en mouvement sportif (environ 12° d'erreur moyenne par
+ * articulation) ; examen de la capture sans marqueurs en 2D, PLOS One, 2023.
+ */
+export const INCERTITUDE_MESURE = {
+  flexionGenou: 10,        // degrés
+  coudeImpact: 10,
+  coudeService: 10,
+  flexionService: 10,
+  hauteurImpact: 0.08,     // fraction de la distance hanche → épaule
+  rotationEpaules: 0.06,   // rapport de largeurs apparentes
+  deplacementTete: 0.08,   // largeurs d'épaules
+  deplacementBassin: 0.08,
+  accompagnement: 0.08,
+};
+
+/** Références concernant une mesure, éventuellement filtrées par type de coup. */
+export function referencesPour(cle, type) {
+  const famille = String(type || '').replace(/^volee-/, '');
+  return REFERENCES.filter((r) => r.cles.includes(cle)
+    && (!famille || !r.coups.length || r.coups.some((c) => famille.startsWith(c) || c.startsWith(famille))));
+}
+
 export const EXPLICATIONS = [
   {
     cle: 'hauteurImpact', seuil: 'hauteurImpact', decimales: 2, unite: '',

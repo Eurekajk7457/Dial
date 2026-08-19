@@ -4,7 +4,7 @@
  */
 
 import { P, angle, dist, milieu, inclinaisonBuste, lisser } from './pose.js';
-import { SEUILS, SEUILS_REGULARITE, EXPLICATIONS, libelleZone } from './knowledge.js';
+import { SEUILS, SEUILS_REGULARITE, EXPLICATIONS, libelleZone, INCERTITUDE_MESURE } from './knowledge.js';
 
 /* ------------------------------------------------------------------ */
 /* Utilitaires                                                         */
@@ -30,14 +30,41 @@ export function ecartType(arr) {
 }
 
 /** Compare une valeur à un seuil : 'bon' | 'moyen' | 'mauvais', + sens de l'écart. */
-function evaluer(valeur, seuil) {
+function evaluer(valeur, seuil, incertitude = 0) {
   if (!Number.isFinite(valeur)) return { niveau: 'inconnu', sens: 0 };
   const [i0, i1] = seuil.ideal;
   const [a0, a1] = seuil.acceptable;
+
+  // Une différence plus petite que l'erreur de la mesure n'est pas une différence. Dire
+  // « 148° au lieu de 140, à corriger » quand la mesure vaut à ±10° près, c'est commenter le
+  // bruit. Au bord d'une zone, on se tait — dans les deux sens : on ne décrète pas non plus
+  // « point fort » un chiffre qu'on ne sait pas distinguer d'un chiffre hors zone.
+  // Une borne à 0 est un plancher physique, pas une frontière : elle ne reçoit pas de marge.
+  if (incertitude > 0
+      && ((i0 > 0 && Math.abs(valeur - i0) <= incertitude)
+        || Math.abs(valeur - i1) <= incertitude)) {
+    return { niveau: 'inconnu', sens: 0, raison: 'incertitude' };
+  }
+
   if (valeur >= i0 && valeur <= i1) return { niveau: 'bon', sens: 0 };
   const sens = valeur < i0 ? -1 : 1;
   if (valeur >= a0 && valeur <= a1) return { niveau: 'moyen', sens };
   return { niveau: 'mauvais', sens };
+}
+
+/**
+ * Erreur de mesure applicable à une médiane de `n` frappes.
+ *
+ * La part aléatoire de l'erreur de posture se compense quand on moyenne plusieurs frappes,
+ * en racine de n. La part systématique — angle de caméra, morphologie, modèle de posture —
+ * ne se compense jamais : on ne descend donc pas sous la moitié de l'erreur d'une frappe
+ * seule, quel que soit le nombre de frappes.
+ */
+export function incertitudePour(cle, n = 1) {
+  const inc = INCERTITUDE_MESURE[cle];
+  if (!inc) return 0;
+  const k = Math.max(1, n);
+  return Math.max(inc / 2, inc / Math.sqrt(k));
 }
 
 /* ------------------------------------------------------------------ */
@@ -618,7 +645,7 @@ export function verdictsFrappe(frappe, revers = 'deux') {
     if (!def || !seuil) return null;
 
     const valeur = frappe[cle];
-    const { niveau, sens } = evaluer(valeur, seuil);
+    const { niveau, sens } = evaluer(valeur, seuil, incertitudePour(cle));
     if (niveau === 'inconnu') return null;
 
     const message = niveau === 'bon'
@@ -652,7 +679,7 @@ function reglesGroupe(type, frappes, profil = {}) {
   const n = frappes.length;
   const libelle = LIBELLES_COUP[type] || type;
   const med = (cle) => mediane(frappes.map((f) => f[cle]));
-  const est = (cle, seuil) => evaluer(med(cle), seuil);
+  const est = (cle, seuil) => evaluer(med(cle), seuil, incertitudePour(cle, n));
 
   const service = type === 'service';
   const volee = type.startsWith('volee');

@@ -5,10 +5,12 @@
 import { echantillonner, SQUELETTE } from './pose.js';
 import {
   analyser, analyserResultats, verdictsFrappe, mesuresJugeables, seuilPour, LIBELLES_COUP,
+  incertitudePour,
 } from './analyse.js';
 import {
   FONDAMENTAUX, RESSOURCES, RESULTATS_BALLE, PRISES,
   modelesPour, requeteModele, LIBELLE_MAIN, LIBELLE_REVERS,
+  referencesPour, REFERENCES,
   EXPLICATIONS, CHAINES_VIDEO, videoYouTube, videoConstat, adapterRequete, libelleZone,
 } from './knowledge.js';
 import {
@@ -706,6 +708,32 @@ function jauge(valeur, seuil, decimales, unite) {
   return bloc;
 }
 
+/** Une valeur publiée, avec sa source et ce qu'une vidéo de téléphone peut en faire. */
+const ETIQUETTE_COMPARABLE = {
+  oui: { texte: 'mesurable ici', classe: 'ok' },
+  partiel: { texte: 'proche, mais pas la même grandeur', classe: 'moyen' },
+  non: { texte: 'hors de portée d\'une seule caméra', classe: 'ko' },
+};
+const ETIQUETTE_NATURE = {
+  etude: 'étude publiée',
+  synthese: 'synthèse de la littérature',
+  'site-technique': 'source technique, non évaluée par des pairs',
+};
+
+function carteReference(ref) {
+  const carte = el('div', 'reference');
+  const c = ETIQUETTE_COMPARABLE[ref.comparable] || ETIQUETTE_COMPARABLE.partiel;
+  carte.innerHTML =
+    `<p class="ref-titre"><strong>Ce que dit la recherche.</strong> ${echapper(ref.titre)}</p>`
+    + `<p class="ref-valeur">${echapper(ref.valeur)}</p>`
+    + `<p class="ref-lecon">${echapper(ref.lecon)}</p>`
+    + `<p class="ref-meta">${echapper(ref.population)} · ${echapper(ref.source)}`
+    + ` · ${echapper(ETIQUETTE_NATURE[ref.nature] || ref.nature)}</p>`
+    + `<p class="ref-meta">Convention de mesure : ${echapper(ref.convention)}</p>`
+    + `<p class="ref-comparable ${c.classe}">Comparaison avec ta vidéo : ${echapper(c.texte)}.</p>`;
+  return carte;
+}
+
 function rendreMesures(a) {
   const vue = $('#vue-mesures');
   vue.innerHTML = '';
@@ -768,7 +796,15 @@ function rendreMesures(a) {
         corps.innerHTML += `<p class="m-diagnostic ok"><strong>Chez toi.</strong> Tu es dans la zone visée ` +
           `(${echapper(libelleZone(seuil, def.unite))}). Rien à changer ici.</p>`;
       }
+      // Marge de la mesure : sans elle, le joueur lit « 148° » comme un chiffre exact.
+      const marge = incertitudePour(def.cle, g.nombre);
+      if (marge) {
+        corps.innerHTML += `<p class="note marge">Marge de cette mesure sur ${g.nombre} frappe(s) : `
+          + `± ${echapper(marge.toFixed(def.decimales) + def.unite)}. `
+          + `Un écart plus petit que cette marge n'est pas jugé.</p>`;
+      }
       if (def.exercice) corps.innerHTML += `<p class="exo"><strong>Exercice :</strong> ${echapper(def.exercice)}</p>`;
+      for (const ref of referencesPour(def.cle, g.type)) corps.appendChild(carteReference(ref));
       corps.appendChild(lienVideo(adapterRequete(def.requeteVideo, g.libelle, a.profil?.main), 'Voir des vidéos sur ce point'));
       carte.appendChild(corps);
       vue.appendChild(carte);
@@ -1354,6 +1390,17 @@ function rendreFondamentaux(cible) {
     }
     cible.appendChild(d);
   }
+
+  // Toutes les références au même endroit : le joueur doit pouvoir vérifier d'où sortent
+  // les chiffres sans avoir à ouvrir chaque mesure une par une.
+  const recherche = el('section', 'bloc-recherche');
+  recherche.appendChild(el('h3', null, "Ce que dit la recherche"));
+  recherche.appendChild(el('p', 'note',
+    "Les zones utilisées par l'app viennent de l'enseignement classique : elles disent ce qu'un "
+    + "entraîneur cherche à obtenir. Voici ce qui a été réellement mesuré sur des joueurs, avec "
+    + "la source, et surtout ce qu'une vidéo de téléphone permet ou non de comparer."));
+  for (const ref of REFERENCES) recherche.appendChild(carteReference(ref));
+  cible.appendChild(recherche);
 
   cible.appendChild(el('h3', null, 'Des chaînes qui expliquent bien'));
   const chaines = el('ul', 'chaines');

@@ -669,3 +669,23 @@ ul.gaucher { margin: 4px 0 0; }
 ul.gaucher li { margin-bottom: 4px; }
 .choix-modeles { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .choix-modeles select { flex: 1 1 150px; min-height: var(--touche); }
+
+/* --- Valeurs de référence publiées ---------------------------------------------------- */
+/* Affichées sous chaque mesure : d'où vient le chiffre, sur qui il a été mesuré, et si une
+   vidéo de téléphone mesure bien la même chose. */
+.reference {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  border-left: 3px solid var(--line-forte);
+}
+.reference p { margin: 0 0 5px; }
+.ref-titre, .ref-valeur, .ref-lecon { font-size: 13.5px; line-height: 1.45; }
+.ref-valeur { font-weight: 600; }
+.ref-meta { font-size: 12px; color: var(--txt2); }
+.ref-comparable { font-size: 12px; font-weight: 600; margin-bottom: 0 !important; }
+.ref-comparable.ok { color: var(--bon); }
+.ref-comparable.moyen { color: var(--attention); }
+.ref-comparable.ko { color: var(--priorite); }
+.note.marge { font-size: 12.5px; }
