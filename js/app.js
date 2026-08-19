@@ -225,7 +225,21 @@ const ARTICULATIONS = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
  * clair par-dessus. Ainsi il reste lisible sur un fond de court clair comme sur
  * un mur sombre, sans dépendre du thème de la page.
  */
-function dessinerSquelette(ctx, pts, w, h, { epaisseur = 3, couleur = '#d8f24a' } = {}) {
+function dessinerSquelette(ctx, pts, w, h, { epaisseur = null, couleur = '#d8f24a' } = {}) {
+  // Le joueur peut remplir l'image comme n'en occuper qu'un dixième. Avec un trait d'épaisseur
+  // fixe, le squelette d'un joueur filmé de loin devenait une tache : les points d'articulation
+  // se touchaient et les membres disparaissaient dedans. On proportionne donc le trait à la
+  // taille réellement dessinée du corps, avec un minimum pour qu'il reste visible.
+  const xs = [], ys = [];
+  for (const i of ARTICULATIONS) {
+    const p = pts[i];
+    if (p) { xs.push(p.x * w); ys.push(p.y * h); }
+  }
+  const taille = xs.length
+    ? Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))
+    : Math.min(w, h);
+  const trait = epaisseur ?? Math.min(4, Math.max(0.8, taille * 0.024));
+
   const passe = (largeur, teinte, rayon) => {
     ctx.lineWidth = largeur;
     ctx.strokeStyle = teinte;
@@ -247,8 +261,12 @@ function dessinerSquelette(ctx, pts, w, h, { epaisseur = 3, couleur = '#d8f24a' 
       ctx.fill();
     }
   };
-  passe(epaisseur + 2.5, 'rgba(10, 22, 18, 0.55)', epaisseur + 1.8);
-  passe(epaisseur, couleur, epaisseur + 0.5);
+  // Le contour sombre reste indispensable : le vert du squelette se perd sinon sur un court
+  // en résine verte. Mais il ne doit pas doubler l'épaisseur du trait — sur un joueur
+  // lointain, c'est lui qui bouchait le bonhomme. On en fait donc un liseré de largeur
+  // constante, qui cerne le trait sans jamais le noyer.
+  passe(trait + 1.2, 'rgba(10, 22, 18, 0.6)', trait * 0.95 + 0.6);
+  passe(trait, couleur, trait * 0.95);
 }
 
 function rafraichirOverlay() {
@@ -488,7 +506,7 @@ function rendreSynthese(a) {
 function peindreFrame(cv, frame) {
   const ctx = cv.getContext('2d');
   const squelette = (couleur) => {
-    if (frame?.pts) dessinerSquelette(ctx, frame.pts, cv.width, cv.height, { epaisseur: 2.5, couleur });
+    if (frame?.pts) dessinerSquelette(ctx, frame.pts, cv.width, cv.height, { couleur });
   };
   ctx.clearRect(0, 0, cv.width, cv.height);
   if (frame?.vignette) {
@@ -1640,5 +1658,5 @@ document.querySelectorAll('.menu-item').forEach((b) => {
 // l'affichage sans filmer quelqu'un. Il n'est posé qu'en local — sur le site publié
 // (et dans le fichier unique ouvert depuis le téléphone), rien n'est ajouté à la page.
 if (['localhost', '127.0.0.1'].includes(location.hostname)) {
-  window.__test = { etat, afficherResultats, lireProfil, rapportTexte };
+  window.__test = { etat, afficherResultats, lireProfil, rapportTexte, dessinerSquelette };
 }
