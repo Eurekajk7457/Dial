@@ -2033,7 +2033,45 @@ const SQUELETTE = [
   [27, 31], [28, 32],
 ];
 
+/**
+ * État du détecteur, partagé entre les analyses successives et observable de l'extérieur.
+ *
+ * `horodatage` ne redémarre jamais à zéro pendant la vie d'un détecteur : MediaPipe exige, en
+ * mode VIDEO, des horodatages strictement croissants d'un appel à l'autre. Comme le détecteur
+ * était gardé en mémoire d'une analyse à la suivante, repartir du temps de la vidéo faisait
+ * échouer TOUTES les images dès la deuxième analyse. Le modèle se moque de la valeur : elle
+ * doit seulement monter.
+ *
+ * `dejaServi` dit si ce détecteur a déjà analysé une vidéo. Il porte l'état de suivi qu'elle
+ * lui a laissé, et fausserait l'analyse suivante : on le remplace alors par un détecteur neuf.
+ */
+const ETAT_DETECTEUR = { mode: 'VIDEO', horodatage: 0, bascule: null, dejaServi: false };
+
 let detecteur = null;
+
+/**
+ * Repart d'un détecteur neuf pour l'analyse suivante.
+ *
+ * En mode VIDEO, le modèle se sert du résultat de l'image précédente pour trouver la
+ * suivante. Comme le détecteur est gardé en mémoire, la deuxième analyse d'une même vidéo
+ * ne démarrait donc pas dans le même état que la première : elle héritait du suivi laissé
+ * par la précédente. Deux analyses du même fichier ne donnaient pas le même taux de
+ * détection — 88 % puis 100 % sur la vidéo du joueur. Une analyse doit partir d'un état
+ * connu, sinon son résultat dépend de ce qu'on a fait avant.
+ *
+ * Le coût n'est payé qu'à partir de la deuxième analyse : la première trouve un détecteur
+ * neuf par construction.
+ */
+function reinitialiserDetecteur() {
+  if (!ETAT_DETECTEUR.dejaServi) return false;
+  try { detecteur?.close?.(); } catch { /* déjà fermé, sans conséquence */ }
+  detecteur = null;
+  ETAT_DETECTEUR.dejaServi = false;
+  ETAT_DETECTEUR.mode = 'VIDEO';
+  ETAT_DETECTEUR.horodatage = 0;
+  ETAT_DETECTEUR.bascule = null;
+  return true;
+}
 
 /** Charge le modèle une seule fois, en essayant les sources l'une après l'autre. */
 async function chargerDetecteur(onStatut = () => {}) {
@@ -2135,15 +2173,6 @@ function chercher(video, t) {
  * Échantillonne la vidéo et renvoie, pour chaque image : temps, points détectés et vignette JPEG.
  * @returns {Promise<{frames: Array, largeur: number, hauteur: number, tauxDetection: number}>}
  */
-/**
- * État du détecteur, partagé entre les analyses successives.
- *
- * L'horodatage ne redémarre jamais à zéro : MediaPipe exige, en mode VIDEO, des horodatages
- * strictement croissants d'un appel à l'autre. Comme le détecteur est gardé en mémoire d'une
- * analyse à la suivante, repartir du temps de la vidéo faisait échouer TOUTES les images dès
- * la deuxième analyse. Le modèle se moque de la valeur : elle doit seulement monter.
- */
-const ETAT_DETECTEUR = { mode: 'VIDEO', horodatage: 0, bascule: null };
 const PAS_HORODATAGE = 40;   // ms fictives entre deux appels
 
 /**
@@ -2242,7 +2271,11 @@ function lisserFenetre(precedente, nouvelle) {
 }
 
 async function echantillonner(video, { debut = 0, duree = 30, fps = 12, onProgres = () => {} } = {}) {
+  // Toute analyse part d'un détecteur neuf : c'est la condition pour que deux analyses du
+  // même fichier donnent le même résultat.
+  if (reinitialiserDetecteur()) onProgres(0, 'Remise à zéro de la détection…');
   const det = await chargerDetecteur((m) => onProgres(0, m));
+  ETAT_DETECTEUR.dejaServi = true;
 
   const fin = Math.min(video.duration, debut + duree);
   const pas = 1 / fps;
@@ -2680,6 +2713,12 @@ const DETECTION_MINI_VERDICT = 0.7;
  */
 const MAINS_JOINTES = 0.6;
 
+/** Visibilité en dessous de laquelle un point est placé au jugé, pas vu. */
+const VISIBILITE_MINI = 0.5;
+
+/** Nombre d'images du geste où les deux poignets doivent être vus pour trancher. */
+const IMAGES_MINI_ECART = 3;
+
 const PLANCHER_STRICT = 2.2;
 const PLANCHER_SOUPLE = 1.1;
 
@@ -2944,9 +2983,17 @@ function mesurerFrappe(series, pic, main, coupImpose = 'auto', revers = 'deux') 
   // Le critère n'a de sens que si les deux poignets sont réellement vus : un poignet libre
   // masqué par le corps est placé au jugé par le modèle de posture, souvent au milieu du
   // tronc, ce qui simulerait un coup droit sur n'importe quel geste.
-  const deuxPoignetsVus = (contact.poignetG.v ?? 1) >= 0.5 && (contact.poignetD.v ?? 1) >= 0.5;
-  const ecartMains = (contact.tronc > 0.01 && deuxPoignetsVus)
-    ? dist(contact.poignetG, contact.poignetD) / contact.tronc : NaN;
+  // Mesuré sur tout le geste, et non sur la seule image du contact : filmée de côté, la main
+  // libre passe derrière le corps une bonne partie du temps, et le modèle de posture ne la
+  // voit alors pas franchement. En ne regardant qu'une image, le critère ne s'appliquait qu'à
+  // 15 % des frappes d'une vidéo réelle — le reste retombait sur le repère fragile, celui-là
+  // même qu'il devait remplacer. On garde donc la même exigence de visibilité, mais on la
+  // cherche sur toutes les images du geste au lieu d'une seule.
+  const ecarts = fenetre(series, pic.t - 0.35, pic.t + 0.35)
+    .filter((f) => f.tronc > 0.01
+      && (f.poignetG.v ?? 1) >= VISIBILITE_MINI && (f.poignetD.v ?? 1) >= VISIBILITE_MINI)
+    .map((f) => dist(f.poignetG, f.poignetD) / f.tronc);
+  const ecartMains = ecarts.length >= IMAGES_MINI_ECART ? mediane(ecarts) : NaN;
 
   const auDessusTete = poignet.y < contact.nez.y;
   let typeDetecte, fiabiliteType;

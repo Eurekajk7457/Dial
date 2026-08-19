@@ -293,6 +293,12 @@ export const DETECTION_MINI_VERDICT = 0.7;
  */
 export const MAINS_JOINTES = 0.6;
 
+/** Visibilité en dessous de laquelle un point est placé au jugé, pas vu. */
+export const VISIBILITE_MINI = 0.5;
+
+/** Nombre d'images du geste où les deux poignets doivent être vus pour trancher. */
+export const IMAGES_MINI_ECART = 3;
+
 export const PLANCHER_STRICT = 2.2;
 export const PLANCHER_SOUPLE = 1.1;
 
@@ -557,9 +563,17 @@ export function mesurerFrappe(series, pic, main, coupImpose = 'auto', revers = '
   // Le critère n'a de sens que si les deux poignets sont réellement vus : un poignet libre
   // masqué par le corps est placé au jugé par le modèle de posture, souvent au milieu du
   // tronc, ce qui simulerait un coup droit sur n'importe quel geste.
-  const deuxPoignetsVus = (contact.poignetG.v ?? 1) >= 0.5 && (contact.poignetD.v ?? 1) >= 0.5;
-  const ecartMains = (contact.tronc > 0.01 && deuxPoignetsVus)
-    ? dist(contact.poignetG, contact.poignetD) / contact.tronc : NaN;
+  // Mesuré sur tout le geste, et non sur la seule image du contact : filmée de côté, la main
+  // libre passe derrière le corps une bonne partie du temps, et le modèle de posture ne la
+  // voit alors pas franchement. En ne regardant qu'une image, le critère ne s'appliquait qu'à
+  // 15 % des frappes d'une vidéo réelle — le reste retombait sur le repère fragile, celui-là
+  // même qu'il devait remplacer. On garde donc la même exigence de visibilité, mais on la
+  // cherche sur toutes les images du geste au lieu d'une seule.
+  const ecarts = fenetre(series, pic.t - 0.35, pic.t + 0.35)
+    .filter((f) => f.tronc > 0.01
+      && (f.poignetG.v ?? 1) >= VISIBILITE_MINI && (f.poignetD.v ?? 1) >= VISIBILITE_MINI)
+    .map((f) => dist(f.poignetG, f.poignetD) / f.tronc);
+  const ecartMains = ecarts.length >= IMAGES_MINI_ECART ? mediane(ecarts) : NaN;
 
   const auDessusTete = poignet.y < contact.nez.y;
   let typeDetecte, fiabiliteType;

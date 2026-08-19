@@ -37,7 +37,45 @@ export const SQUELETTE = [
   [27, 31], [28, 32],
 ];
 
+/**
+ * État du détecteur, partagé entre les analyses successives et observable de l'extérieur.
+ *
+ * `horodatage` ne redémarre jamais à zéro pendant la vie d'un détecteur : MediaPipe exige, en
+ * mode VIDEO, des horodatages strictement croissants d'un appel à l'autre. Comme le détecteur
+ * était gardé en mémoire d'une analyse à la suivante, repartir du temps de la vidéo faisait
+ * échouer TOUTES les images dès la deuxième analyse. Le modèle se moque de la valeur : elle
+ * doit seulement monter.
+ *
+ * `dejaServi` dit si ce détecteur a déjà analysé une vidéo. Il porte l'état de suivi qu'elle
+ * lui a laissé, et fausserait l'analyse suivante : on le remplace alors par un détecteur neuf.
+ */
+export const ETAT_DETECTEUR = { mode: 'VIDEO', horodatage: 0, bascule: null, dejaServi: false };
+
 let detecteur = null;
+
+/**
+ * Repart d'un détecteur neuf pour l'analyse suivante.
+ *
+ * En mode VIDEO, le modèle se sert du résultat de l'image précédente pour trouver la
+ * suivante. Comme le détecteur est gardé en mémoire, la deuxième analyse d'une même vidéo
+ * ne démarrait donc pas dans le même état que la première : elle héritait du suivi laissé
+ * par la précédente. Deux analyses du même fichier ne donnaient pas le même taux de
+ * détection — 88 % puis 100 % sur la vidéo du joueur. Une analyse doit partir d'un état
+ * connu, sinon son résultat dépend de ce qu'on a fait avant.
+ *
+ * Le coût n'est payé qu'à partir de la deuxième analyse : la première trouve un détecteur
+ * neuf par construction.
+ */
+export function reinitialiserDetecteur() {
+  if (!ETAT_DETECTEUR.dejaServi) return false;
+  try { detecteur?.close?.(); } catch { /* déjà fermé, sans conséquence */ }
+  detecteur = null;
+  ETAT_DETECTEUR.dejaServi = false;
+  ETAT_DETECTEUR.mode = 'VIDEO';
+  ETAT_DETECTEUR.horodatage = 0;
+  ETAT_DETECTEUR.bascule = null;
+  return true;
+}
 
 /** Charge le modèle une seule fois, en essayant les sources l'une après l'autre. */
 export async function chargerDetecteur(onStatut = () => {}) {
@@ -139,15 +177,6 @@ function chercher(video, t) {
  * Échantillonne la vidéo et renvoie, pour chaque image : temps, points détectés et vignette JPEG.
  * @returns {Promise<{frames: Array, largeur: number, hauteur: number, tauxDetection: number}>}
  */
-/**
- * État du détecteur, partagé entre les analyses successives.
- *
- * L'horodatage ne redémarre jamais à zéro : MediaPipe exige, en mode VIDEO, des horodatages
- * strictement croissants d'un appel à l'autre. Comme le détecteur est gardé en mémoire d'une
- * analyse à la suivante, repartir du temps de la vidéo faisait échouer TOUTES les images dès
- * la deuxième analyse. Le modèle se moque de la valeur : elle doit seulement monter.
- */
-export const ETAT_DETECTEUR = { mode: 'VIDEO', horodatage: 0, bascule: null };
 const PAS_HORODATAGE = 40;   // ms fictives entre deux appels
 
 /**
@@ -246,7 +275,11 @@ function lisserFenetre(precedente, nouvelle) {
 }
 
 export async function echantillonner(video, { debut = 0, duree = 30, fps = 12, onProgres = () => {} } = {}) {
+  // Toute analyse part d'un détecteur neuf : c'est la condition pour que deux analyses du
+  // même fichier donnent le même résultat.
+  if (reinitialiserDetecteur()) onProgres(0, 'Remise à zéro de la détection…');
   const det = await chargerDetecteur((m) => onProgres(0, m));
+  ETAT_DETECTEUR.dejaServi = true;
 
   const fin = Math.min(video.duration, debut + duree);
   const pas = 1 / fps;
