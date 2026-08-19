@@ -135,6 +135,8 @@ function construireSequence(analyse, echantillon) {
 const MESURES_FRAPPE = [
   'hauteurImpact', 'coudeImpact', 'rotationEpaules', 'flexionGenou', 'accompagnement',
   'deplacementTete', 'deplacementBassin', 'vitesse', 'hauteurBrasLibre', 'oscillation',
+  // Diagnostic : pourquoi le classement du coup a pu, ou n'a pas pu, être tranché.
+  'ecartMains', 'visibiliteMainLibre', 'imagesEcart',
 ];
 
 /**
@@ -146,6 +148,8 @@ export function enregistrer(analyse, echantillon = null, empreinte = null) {
 
   const detail = {
     tauxDetection: analyse.tauxDetection,
+    // Empreinte des points détectés : deux analyses du même fichier doivent la partager.
+    empreinteMesures: analyse.empreinteMesures || null,
     mainDominante: analyse.mainDominante,
     duree: analyse.duree,
     sequence: construireSequence(analyse, echantillon),

@@ -569,11 +569,18 @@ export function mesurerFrappe(series, pic, main, coupImpose = 'auto', revers = '
   // 15 % des frappes d'une vidéo réelle — le reste retombait sur le repère fragile, celui-là
   // même qu'il devait remplacer. On garde donc la même exigence de visibilité, mais on la
   // cherche sur toutes les images du geste au lieu d'une seule.
-  const ecarts = fenetre(series, pic.t - 0.35, pic.t + 0.35)
+  const autourDuGeste = fenetre(series, pic.t - 0.35, pic.t + 0.35);
+  const ecarts = autourDuGeste
     .filter((f) => f.tronc > 0.01
       && (f.poignetG.v ?? 1) >= VISIBILITE_MINI && (f.poignetD.v ?? 1) >= VISIBILITE_MINI)
     .map((f) => dist(f.poignetG, f.poignetD) / f.tronc);
   const ecartMains = ecarts.length >= IMAGES_MINI_ECART ? mediane(ecarts) : NaN;
+
+  // Ce qui a empêché, ou permis, de trancher : sans ces deux chiffres, on ne peut que
+  // supposer pourquoi le critère fiable s'applique si rarement sur une vidéo réelle.
+  const clePoignetLibre = main === 'D' ? 'poignetG' : 'poignetD';
+  const visibiliteMainLibre = mediane(autourDuGeste.map((f) => f[clePoignetLibre]?.v ?? 1));
+  const imagesEcart = ecarts.length;
 
   const auDessusTete = poignet.y < contact.nez.y;
   let typeDetecte, fiabiliteType;
@@ -622,6 +629,8 @@ export function mesurerFrappe(series, pic, main, coupImpose = 'auto', revers = '
     typeDetecte,
     fiabiliteType,
     ecartMains,
+    visibiliteMainLibre,
+    imagesEcart,
     incertitudeCoude,
     busteImpact: contact.buste,
   };
@@ -1384,7 +1393,8 @@ export function analyserResultats(frappes) {
 /* 6. Point d'entrée                                                   */
 /* ------------------------------------------------------------------ */
 
-export function analyser({ frames, largeur, hauteur, tauxDetection, fenetre = null }, profil = {}) {
+export function analyser({ frames, largeur, hauteur, tauxDetection, fenetre = null,
+  empreinteMesures = null }, profil = {}) {
   const { main = 'auto', coup = 'auto' } = profil;
 
   const series = calibrerEchelle(construireSeries(frames, largeur, hauteur));
@@ -1488,6 +1498,7 @@ export function analyser({ frames, largeur, hauteur, tauxDetection, fenetre = nu
     detectionSouple,
     duree,
     tauxDetection,
+    empreinteMesures,
     groupes: [...groupes.entries()].map(([type, liste]) => ({
       type,
       libelle: LIBELLES_COUP[type] || type,

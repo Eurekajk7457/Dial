@@ -74,6 +74,10 @@ export function reinitialiserDetecteur() {
   ETAT_DETECTEUR.mode = 'VIDEO';
   ETAT_DETECTEUR.horodatage = 0;
   ETAT_DETECTEUR.bascule = null;
+  // Même raison : si la première analyse a basculé sur le repli, la deuxième démarrerait
+  // déjà basculée et n'attendrait pas ses images de la même façon.
+  ATTENTE_IMAGE.utilisable = true;
+  ATTENTE_IMAGE.echecs = 0;
   return true;
 }
 
@@ -274,6 +278,34 @@ function lisserFenetre(precedente, nouvelle) {
   };
 }
 
+/**
+ * Empreinte des points détectés sur toute la séquence.
+ *
+ * Deux analyses du même fichier devraient produire exactement les mêmes points. Quand leurs
+ * résultats diffèrent, il faut pouvoir dire si la différence naît de la détection elle-même
+ * ou de ce qui vient après. Comparer deux empreintes le dit en un coup d'œil, là où comparer
+ * des médianes laisse deviner.
+ *
+ * Les coordonnées sont arrondies au millième, soit environ deux pixels sur une vidéo large
+ * de 1920. En dessous on comparerait le bruit de l'arithmétique flottante ; au-dessus on
+ * laisserait passer de vraies différences. Repère : un écart de 4° au coude déplace le
+ * poignet d'environ un centième — dix fois cette précision, donc toujours visible.
+ */
+function empreinteFrames(frames) {
+  let h1 = 0x811c9dc5, h2 = 0x01000193;
+  const avaler = (n) => {
+    const v = Math.round(n * 1000) | 0;
+    h1 = ((h1 ^ v) * 16777619) >>> 0;
+    h2 = ((h2 + v) * 2246822519) >>> 0;
+  };
+  for (const f of frames) {
+    avaler(f.t);
+    if (!f.pts) { avaler(-1); continue; }
+    for (const p of f.pts) { avaler(p.x); avaler(p.y); }
+  }
+  return (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0'));
+}
+
 export async function echantillonner(video, { debut = 0, duree = 30, fps = 12, onProgres = () => {} } = {}) {
   // Toute analyse part d'un détecteur neuf : c'est la condition pour que deux analyses du
   // même fichier donnent le même résultat.
@@ -375,6 +407,10 @@ export async function echantillonner(video, { debut = 0, duree = 30, fps = 12, o
     // Part des détections obtenues grâce au suivi recadré, utile pour juger l'apport du suivi
     tauxRecadrage: detectees ? recadrees / detectees : 0,
     modeDetection: ETAT_DETECTEUR.mode,
+    // Deux analyses du même fichier doivent partager cette empreinte. Si elle diffère, la
+    // détection elle-même n'est pas reproductible ; si elle est identique, la différence
+    // vient de l'analyse qui suit.
+    empreinteMesures: empreinteFrames(frames),
     panne,
     // La fenêtre réellement regardée : sans elle, impossible de dire au joueur que le
     // jeu se trouve peut-être plus loin dans sa vidéo que l'extrait analysé.
