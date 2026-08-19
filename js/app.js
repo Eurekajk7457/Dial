@@ -8,7 +8,7 @@ import {
 } from './analyse.js';
 import {
   FONDAMENTAUX, RESSOURCES, RESULTATS_BALLE, PRISES,
-  EXPLICATIONS, CHAINES_VIDEO, videoYouTube, videoConstat, libelleZone,
+  EXPLICATIONS, CHAINES_VIDEO, videoYouTube, videoConstat, adapterRequete, libelleZone,
 } from './knowledge.js';
 import {
   PROTOCOLE, lireReference, definirReference, effacerReference,
@@ -408,7 +408,7 @@ function carteConstat(c) {
   }
   // Un défaut nommé se corrige mieux en le voyant faire — mais seulement si une recherche
   // vidéo pertinente existe pour lui : mieux vaut pas de lien qu'un lien hors sujet.
-  const v = videoConstat(c.titre);
+  const v = videoConstat(c.titre, c.coup);
   if (v) node.appendChild(lienVideo(v.requete, 'Voir des vidéos sur ce point'));
   return node;
 }
@@ -744,7 +744,7 @@ function rendreMesures(a) {
           `(${echapper(libelleZone(seuil, def.unite))}). Rien à changer ici.</p>`;
       }
       if (def.exercice) corps.innerHTML += `<p class="exo"><strong>Exercice :</strong> ${echapper(def.exercice)}</p>`;
-      corps.appendChild(lienVideo(def.requeteVideo, 'Voir des vidéos sur ce point'));
+      corps.appendChild(lienVideo(adapterRequete(def.requeteVideo, g.libelle), 'Voir des vidéos sur ce point'));
       carte.appendChild(corps);
       vue.appendChild(carte);
     }
@@ -1153,7 +1153,7 @@ function rendreBilan() {
 
       if (it.detail) carte.appendChild(el('p', null, echapper(it.detail)));
       if (it.exo && !it.bon) carte.appendChild(el('p', 'exo', `<strong>Exercice :</strong> ${echapper(it.exo)}`));
-      const v = videoConstat(it.titre);
+      const v = videoConstat(it.titre, it.coup);
       if (v && !it.bon && it.statut !== 'regle') {
         carte.appendChild(lienVideo(v.requete, 'Voir des vidéos sur ce point'));
       }
@@ -1634,3 +1634,11 @@ ouvrirOnglet(avecHistorique ? 'bilan' : 'fondamentaux');
 document.querySelectorAll('.menu-item').forEach((b) => {
   b.classList.toggle('actif', b.dataset.aller === (avecHistorique ? 'analyses' : 'video'));
 });
+
+// Crochet de vérification automatique. Les tests ont besoin d'injecter un résultat et de
+// relire le profil sans disposer d'une vraie vidéo : c'est le seul moyen de vérifier
+// l'affichage sans filmer quelqu'un. Il n'est posé qu'en local — sur le site publié
+// (et dans le fichier unique ouvert depuis le téléphone), rien n'est ajouté à la page.
+if (['localhost', '127.0.0.1'].includes(location.hostname)) {
+  window.__test = { etat, afficherResultats, lireProfil, rapportTexte };
+}

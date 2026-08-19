@@ -1036,14 +1036,22 @@ function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte
     });
   }
 
+  // On ne compare que la FAMILLE du coup — coup droit, revers, service — en ignorant la
+  // distinction volée / fond de court, trop fragile en 2D pour fonder une alerte. Sans ce
+  // regroupement, une séquence de revers pouvait déclencher « ça ressemble à des volées de
+  // coup droit » : un faux signalement plus déroutant qu'utile.
   // Le coup déclaré fait foi, mais s'il contredit souvent ce qui est reconnu, le dire :
   // sur un échange contenant coups droits et revers, tout étiqueter pareil serait faux.
   if (frappes.length >= 4 && profil.coup && profil.coup !== 'auto') {
-    const desaccords = frappes.filter((f) => f.typeDetecte && f.typeDetecte !== f.type);
+    const famille = (t) => String(t).replace(/^volee-/, '');
+    const desaccords = frappes.filter((f) => f.typeDetecte && famille(f.typeDetecte) !== famille(f.type));
     const part = desaccords.length / frappes.length;
     if (part >= 0.35) {
       const compte = new Map();
-      for (const f of desaccords) compte.set(f.typeDetecte, (compte.get(f.typeDetecte) || 0) + 1);
+      for (const f of desaccords) {
+        const fam = famille(f.typeDetecte);
+        compte.set(fam, (compte.get(fam) || 0) + 1);
+      }
       const autre = [...compte.entries()].sort((a, b) => b[1] - a[1])[0];
       c.push({
         niveau: 'corriger', coup: 'Réglage',

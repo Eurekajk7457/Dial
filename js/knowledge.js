@@ -169,10 +169,26 @@ export function libelleZone(seuil, unite = '') {
   return bas === 0 ? `${n(haut)} ou moins` : `${n(bas)} à ${n(haut)}`;
 }
 
-/** Requête vidéo pour un défaut, ou null s'il n'y a rien de pertinent à montrer. */
-export function videoConstat(titre) {
+/** Les recherches sont rédigées pour le coup droit, le coup le plus documenté. Proposer une
+ *  vidéo de coup droit à quelqu'un dont le défaut porte sur son revers est hors sujet : on
+ *  remplace donc le nom du coup par celui réellement concerné. Les requêtes qui ne nomment
+ *  aucun coup sont déjà valables partout et restent intactes. */
+export function adapterRequete(requete, coup) {
+  if (!requete || !requete.includes('coup droit')) return requete;
+  const c = String(coup || '').toLowerCase();
+  if (!c || c.startsWith('g')) return requete;                 // « Général » : pas de coup visé
+  const volee = c.includes('volée') || c.includes('volee');
+  const cible = c.includes('service') ? 'service'
+    : volee ? (c.includes('revers') ? 'volée de revers' : 'volée de coup droit')
+      : c.includes('revers') ? 'revers' : 'coup droit';
+  return cible === 'coup droit' ? requete : requete.replace('coup droit', cible);
+}
+
+/** Requête vidéo pour un défaut, ou null s'il n'y a rien de pertinent à montrer.
+ *  `coup` est le libellé du coup concerné (« Revers », « Service », « Général »…). */
+export function videoConstat(titre, coup) {
   const req = VIDEOS_CONSTAT[titre];
-  return req ? { requete: req } : null;
+  return req ? { requete: adapterRequete(req, coup) } : null;
 }
 
 /** Chaînes d'enseignement reconnues, à parcourir quand on veut creuser un thème. */
