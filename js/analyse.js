@@ -372,10 +372,18 @@ export function diagnostiquerFrappes(series, vitesse) {
 /* ------------------------------------------------------------------ */
 
 export const LIBELLES_ANGLE = {
-  cote: 'sur le côté du joueur',
-  face: 'devant le joueur',
-  dos: 'derrière le joueur',
+  cote: 'sur le côté',
+  face: 'de face',
+  dos: 'de dos',
   autre: 'en diagonale',
+};
+
+/** Ce que chaque position de caméra permet — et ne permet pas — de mesurer. */
+export const APPORT_ANGLE = {
+  cote: 'idéal pour le coup droit et le revers',
+  face: 'idéal pour le service, moins fiable pour les angles de bras en fond de court',
+  dos: 'bon pour le service et les appuis',
+  autre: "l'orientation change trop pour trancher",
 };
 
 /**
@@ -627,16 +635,28 @@ export function mesuresJugeables(type) {
 }
 
 /** Le seuil à appliquer dépend du coup : un service se juge autrement qu'un coup droit. */
-export function seuilPour(cle, type, revers = 'deux') {
-  if (type === 'service' && cle === 'coudeImpact') return SEUILS.coudeService;
-  if (type === 'service' && cle === 'flexionGenou') return SEUILS.flexionService;
+/**
+ * Nom de la zone qui s'applique à une mesure, pour un coup donné.
+ *
+ * Nommer la zone et la lire sont deux besoins distincts : l'affichage doit pouvoir dire d'où
+ * vient la zone employée, sans réécrire ces règles pour son compte — c'est ainsi qu'on se
+ * retrouve avec trois versions de la même correspondance, dont deux périmées.
+ */
+export function cleSeuilPour(cle, type, revers = 'deux') {
+  if (type === 'service' && cle === 'coudeImpact') return 'coudeService';
+  if (type === 'service' && cle === 'flexionGenou') return 'flexionService';
   // Un revers à deux mains se joue coudes fléchis : lui appliquer la référence du coup
   // droit revenait à lui reprocher systématiquement un « bras trop plié ».
-  if (cle === 'coudeImpact' && type === 'revers' && revers === 'deux') return SEUILS.coudeRevers2M;
-  return { hauteurImpact: SEUILS.hauteurImpact, coudeImpact: SEUILS.coudeImpact,
-    rotationEpaules: SEUILS.rotationEpaules, flexionGenou: SEUILS.flexionGenou,
-    accompagnement: SEUILS.accompagnement, deplacementTete: SEUILS.stabiliteTete,
-    deplacementBassin: SEUILS.stabiliteBassin }[cle] || null;
+  if (cle === 'coudeImpact' && type === 'revers' && revers === 'deux') return 'coudeRevers2M';
+  return { hauteurImpact: 'hauteurImpact', coudeImpact: 'coudeImpact',
+    rotationEpaules: 'rotationEpaules', flexionGenou: 'flexionGenou',
+    accompagnement: 'accompagnement', deplacementTete: 'stabiliteTete',
+    deplacementBassin: 'stabiliteBassin' }[cle] || null;
+}
+
+export function seuilPour(cle, type, revers = 'deux') {
+  const nom = cleSeuilPour(cle, type, revers);
+  return nom ? SEUILS[nom] || null : null;
 }
 
 /**
@@ -1190,15 +1210,12 @@ function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte
   }
 
   if (camera && frappes.length) {
-    const dit = {
-      cote: 'sur le côté du joueur — idéal pour le coup droit et le revers',
-      face: 'devant le joueur — idéal pour le service, moins fiable pour les angles de bras en fond de court',
-      dos: 'derrière le joueur — bon pour le service et les appuis',
-      autre: "en diagonale, ou l'orientation change trop pour trancher",
-    }[camera.angle];
+    const dit = LIBELLES_ANGLE[camera.angle]
+      ? `${LIBELLES_ANGLE[camera.angle]} — ${APPORT_ANGLE[camera.angle]}`
+      : undefined;
     c.push({
       niveau: 'info', coup: 'Prise de vue',
-      titre: `Caméra détectée : ${{ cote: 'sur le côté', face: 'de face', dos: 'de dos', autre: 'en diagonale' }[camera.angle]}`,
+      titre: `Caméra détectée : ${LIBELLES_ANGLE[camera.angle] || 'position indéterminée'}`,
       detail: `La position de la caméra est déduite de ta posture, tu n'as rien à renseigner : ${dit}.` +
         (camera.confiance < 0.5 ? " Détection peu sûre sur cette vidéo." : ''),
     });

@@ -4,13 +4,14 @@
 
 import { echantillonner, SQUELETTE } from './pose.js';
 import {
-  analyser, analyserResultats, verdictsFrappe, mesuresJugeables, seuilPour, LIBELLES_COUP,
+  analyser, analyserResultats, verdictsFrappe, mesuresJugeables, seuilPour, cleSeuilPour, LIBELLES_COUP,
+  LIBELLES_ANGLE,
   incertitudePour,
 } from './analyse.js';
 import {
   FONDAMENTAUX, RESSOURCES, RESULTATS_BALLE, PRISES,
   modelesPour, requeteModele, LIBELLE_MAIN, LIBELLE_REVERS,
-  referencesPour, REFERENCES,
+  referencesPour, REFERENCES, PROVENANCE, PROVENANCE_DETECTION, ORIGINES, recouvrement,
   EXPLICATIONS, CHAINES_VIDEO, videoYouTube, videoConstat, adapterRequete, libelleZone,
 } from './knowledge.js';
 import {
@@ -722,6 +723,27 @@ const ETIQUETTE_NATURE = {
   'site-technique': 'source technique, non évaluée par des pairs',
 };
 
+/**
+ * D'où vient la zone à viser affichée pour une mesure. Sans cette mention, une consigne de
+ * club et une valeur mesurée s'affichent exactement pareil, et le joueur ne peut pas savoir
+ * lesquelles de ses « fautes » reposent sur quelque chose.
+ */
+function blocProvenance(cle, typeCoup, revers) {
+  // La zone employée est nommée par le moteur, pas devinée ici : le service et le revers à
+  // deux mains ont chacun la leur, et l'origine affichée doit suivre la zone réellement
+  // appliquée.
+  const p = PROVENANCE[cleSeuilPour(cle, typeCoup, revers)];
+  const bloc = el('div', `provenance ${p ? p.origine : 'enseignement'}`);
+  if (!p) {
+    bloc.textContent = "L'origine de cette zone n'est pas documentée.";
+    return bloc;
+  }
+  bloc.innerHTML = `<p><strong>D'où vient cette zone :</strong> `
+    + `<span class="prov-etiquette">${echapper(ORIGINES[p.origine])}</span></p>`
+    + `<p class="prov-texte">${echapper(p.texte)}</p>`;
+  return bloc;
+}
+
 function carteReference(ref) {
   const carte = el('div', 'reference');
   const c = ETIQUETTE_COMPARABLE[ref.comparable] || ETIQUETTE_COMPARABLE.partiel;
@@ -733,6 +755,19 @@ function carteReference(ref) {
     + ` · ${echapper(ETIQUETTE_NATURE[ref.nature] || ref.nature)}</p>`
     + `<p class="ref-meta">Convention de mesure : ${echapper(ref.convention)}</p>`
     + `<p class="ref-comparable ${c.classe}">Comparaison avec ta vidéo : ${echapper(c.texte)}.</p>`;
+
+  // Rapprochement calculé, jamais affirmé : si la zone de l'app change, ce chiffre suit.
+  for (const plage of ref.plages || []) {
+    const r = recouvrement(plage);
+    if (!r) continue;
+    const mots = { aucun: 'aucun recouvrement', faible: 'recouvrement faible',
+      partiel: 'recouvrement partiel', large: 'recouvrement large' }[r.verdict];
+    const p = el('p', `ref-ecart ${r.verdict === 'aucun' ? 'ko' : r.verdict === 'large' ? 'ok' : 'moyen'}`);
+    p.textContent = `Zone de l'app pour ${plage.quoi} : ${r.zone[0]} à ${r.zone[1]}. `
+      + `Valeur publiée : ${r.publie[0]} à ${r.publie[1]}. `
+      + `${mots} — ${Math.round(r.part * 100)} % de la zone de l'app.`;
+    carte.appendChild(p);
+  }
   return carte;
 }
 
@@ -832,6 +867,7 @@ function rendreMesures(a) {
           + `Un écart plus petit que cette marge n'est pas jugé.</p>`;
       }
       if (def.exercice) corps.innerHTML += `<p class="exo"><strong>Exercice :</strong> ${echapper(def.exercice)}</p>`;
+      if (seuil) corps.appendChild(blocProvenance(def.cle, g.type, a.profil?.revers));
       for (const ref of referencesPour(def.cle, g.type)) corps.appendChild(carteReference(ref));
       corps.appendChild(lienVideo(adapterRequete(def.requeteVideo, g.libelle, a.profil?.main), 'Voir des vidéos sur ce point'));
       carte.appendChild(corps);
@@ -1002,7 +1038,7 @@ function rendreProtocole(vue) {
   if (ref) {
     bloc.appendChild(el('p', 'note',
       `Séance de référence : ${echapper(dateLongue(ref.date))} — ` +
-      `caméra ${echapper({ cote: 'sur le côté', face: 'de face', dos: 'de dos', autre: 'en diagonale' }[ref.conditions.angleCamera] || '?')}, ` +
+      `caméra ${echapper(LIBELLES_ANGLE[ref.conditions.angleCamera] || '?')}, ` +
       `${echapper(String(ref.conditions.fps))} images/seconde.`));
   } else {
     bloc.appendChild(el('p', 'note',
@@ -1429,6 +1465,23 @@ function rendreFondamentaux(cible) {
     + "la source, et surtout ce qu'une vidéo de téléphone permet ou non de comparer."));
   for (const ref of REFERENCES) recherche.appendChild(carteReference(ref));
   cible.appendChild(recherche);
+
+  const origines = el('section', 'bloc-origines');
+  origines.appendChild(el('h3', null, "D'où viennent les chiffres de l'app"));
+  origines.appendChild(el('p', 'note',
+    "Deux familles de chiffres. Les zones à viser disent ce qui est bien ; les constantes de "
+    + "détection disent ce qui est une frappe. Les premières viennent toutes de l'enseignement "
+    + "classique — aucune n'est issue d'une mesure, et l'app le dit sur chaque mesure plutôt que "
+    + "de laisser croire le contraire. Les secondes ont été choisies sur des bancs d'essai "
+    + "chiffrés, ou déduites par le calcul."));
+  for (const d of PROVENANCE_DETECTION) {
+    const carte = el('div', `provenance ${d.origine}`);
+    carte.innerHTML = `<p><strong>${echapper(d.nom)} : ${echapper(d.valeur)}</strong> `
+      + `<span class="prov-etiquette">${echapper(ORIGINES[d.origine])}</span></p>`
+      + `<p class="prov-texte">${echapper(d.texte)}</p>`;
+    origines.appendChild(carte);
+  }
+  cible.appendChild(origines);
 
   cible.appendChild(el('h3', null, 'Des chaînes qui expliquent bien'));
   const chaines = el('ul', 'chaines');

@@ -11,6 +11,8 @@
  * sont comparables et lesquelles ne le sont pas.
  */
 
+import { LIBELLES_ANGLE } from './analyse.js';
+
 const CLE_REFERENCE = 'dial-tennis-protocole';
 
 /** La marche à suivre, volontairement courte : un protocole qu'on ne suit pas ne sert à rien. */
@@ -27,7 +29,7 @@ const CRITERES = [
   {
     cle: 'angleCamera', libelle: 'Position de la caméra', bloquant: true,
     egal: (a, b) => a === b,
-    dire: (ref, cur) => `caméra ${LIB_ANGLE[cur] || cur} cette fois, ${LIB_ANGLE[ref] || ref} pour la référence`,
+    dire: (ref, cur) => `caméra ${LIBELLES_ANGLE[cur] || cur} cette fois, ${LIBELLES_ANGLE[ref] || ref} pour la référence`,
   },
   {
     cle: 'coup', libelle: 'Coup filmé', bloquant: true,
@@ -48,7 +50,6 @@ const CRITERES = [
   },
 ];
 
-const LIB_ANGLE = { cote: 'sur le côté', face: 'de face', dos: 'de dos', autre: 'en diagonale' };
 
 export function lireReference() {
   try {

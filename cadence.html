@@ -701,6 +701,41 @@ ul.gaucher li { margin-bottom: 4px; }
 /* Mesure trop dispersée pour être jugée : ni verte ni rouge, explicitement en attente. */
 .mesure.incaracterisable { border-left: 3px solid var(--attention); }
 .mesure.incaracterisable .m-valeur { color: var(--txt2); }
+
+/* --- Origine des chiffres -------------------------------------------------------------- */
+/* Une consigne d'entraînement et une valeur mesurée ne doivent pas s'afficher pareil. */
+.provenance {
+  margin-top: 10px;
+  padding: 9px 11px;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  border-left: 3px solid var(--line-forte);
+}
+.provenance p { margin: 0 0 4px; font-size: 13px; line-height: 1.45; }
+.provenance p:last-child { margin-bottom: 0; }
+.prov-texte { color: var(--txt2); }
+.prov-etiquette {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--surface-3);
+  color: var(--txt2);
+}
+.provenance.etude { border-left-color: var(--bon); }
+.provenance.etude .prov-etiquette { background: var(--bon-fond); color: var(--bon); }
+.provenance.banc, .provenance.calcul { border-left-color: var(--primaire); }
+.provenance.banc .prov-etiquette, .provenance.calcul .prov-etiquette {
+  background: var(--primaire-clair); color: var(--primaire-fonce);
+}
+.provenance.enseignement { border-left-color: var(--attention); }
+.provenance.enseignement .prov-etiquette { background: var(--attention-fond); color: var(--attention); }
+.ref-ecart { font-size: 12.5px; font-weight: 600; margin-bottom: 0 !important; }
+.ref-ecart.ok { color: var(--bon); }
+.ref-ecart.moyen { color: var(--attention); }
+.ref-ecart.ko { color: var(--priorite); }
+.bloc-origines { margin: 22px 0; }
 </style>
 </head>
 <body>
@@ -1581,6 +1616,8 @@ const REFERENCES = [
   },
   {
     cles: ['coudeImpact'], coups: ['revers'],
+    plages: [{ zone: 'coudeImpact', min: 160, max: 175, quoi: 'revers à une main' },
+             { zone: 'coudeRevers2M', min: 140, max: 160, quoi: 'revers à deux mains' }],
     titre: "Extension du bras à l'impact en revers",
     valeur: "Environ 160 à 175° à une main, 140 à 160° à deux mains.",
     population: "Repères d'analyse technique, non issus d'une étude évaluée par des pairs",
@@ -1588,7 +1625,8 @@ const REFERENCES = [
     convention: "Angle intérieur du coude, 180° = bras tendu.",
     comparable: 'oui',
     lecon: "À une main le bras se tend presque complètement pour aller chercher la balle ; à "
-      + "deux mains il reste fléchi. Ce repère converge avec la zone utilisée par l'app.",
+      + "deux mains il reste fléchi. L'app retient des zones plus larges et plus basses : le "
+      + "recouvrement avec ces valeurs est partiel, et calculé ci-dessous plutôt qu'affirmé.",
   },
   {
     cles: ['coudeImpact'], coups: ['coup-droit'],
@@ -1606,6 +1644,7 @@ const REFERENCES = [
   },
   {
     cles: ['flexionService'], coups: ['service'],
+    plages: [{ zone: 'flexionService', min: 110, max: 120, quoi: 'la flexion au service' }],
     titre: "Flexion des genoux au service",
     valeur: "110 à 120° est la norme couramment citée. Un entraînement ayant augmenté la flexion "
       + "de 31° a fait gagner 1,38 km/h de vitesse de raquette.",
@@ -1614,7 +1653,9 @@ const REFERENCES = [
     convention: "Angle intérieur du genou au point le plus bas, 180° = jambe tendue.",
     comparable: 'oui',
     lecon: "Plus de flexion réduit aussi les contraintes mesurées au coude et à l'épaule : "
-      + "c'est autant une question de blessure que de puissance.",
+      + "c'est autant une question de blessure que de puissance. Attention : cette norme "
+      + "demande de plier NETTEMENT plus que la zone retenue par l'app, qui est donc "
+      + "probablement trop indulgente sur ce point.",
   },
   {
     cles: ['flexionGenou'], coups: ['coup-droit', 'revers'],
@@ -1644,6 +1685,117 @@ const REFERENCES = [
 ];
 
 /**
+ * D'où vient chaque zone. Quatre origines, et une seule est solide.
+ *
+ * La distinction compte pour le joueur : une zone tirée d'une mesure publiée et une zone
+ * héritée d'une consigne de club ne se contredisent pas de la même façon. Les afficher
+ * toutes de la même manière laissait croire que tout se valait.
+ *
+ *   etude        une mesure publiée soutient la valeur
+ *   calcul       la valeur se déduit d'une grandeur physique, par le calcul
+ *   banc         la valeur a été choisie sur un banc d'essai de l'app, chiffres à l'appui
+ *   enseignement consigne d'entraînement courante — aucune mesure derrière, et c'est dit
+ */
+const ORIGINES = {
+  etude: "mesure publiée",
+  calcul: "déduit par le calcul",
+  banc: "choisi sur banc d'essai",
+  enseignement: "consigne d'entraînement, non mesurée",
+};
+
+const PROVENANCE = {
+  flexionGenou: { origine: 'enseignement', texte:
+    "Consigne classique « fléchis avant de frapper ». Aucune norme chiffrée trouvée dans la "
+    + "littérature : la revue systématique de 2023 conclut que la flexion dépend surtout de la "
+    + "situation — nettement plus marquée en appui ouvert défensif — et que les joueurs de haut "
+    + "niveau ne se distinguent que par le moment où ils fléchissent, pas par l'angle atteint. "
+    + "À lire comme un repère, pas comme une norme." },
+
+  rotationEpaules: { origine: 'enseignement', texte:
+    "Cette mesure est un rapport de largeurs d'épaules apparentes, propre à l'app : elle n'a "
+    + "pas d'équivalent dans la littérature, qui mesure des degrés en capture 3D. La zone a été "
+    + "posée pour que « épaules nettement de profil » tombe dedans, sans mesure derrière." },
+
+  coudeImpact: { origine: 'enseignement', texte:
+    "Consigne « bras allongé mais pas verrouillé ». Le seul repère chiffré trouvé pour le revers "
+    + "à une main (160 à 175°) ne recouvre que 38 % de cette zone, plus large et plus basse." },
+
+  coudeRevers2M: { origine: 'enseignement', texte:
+    "Posée à part du coup droit parce que le bras dominant ne se tend jamais autant à deux mains. "
+    + "Le repère chiffré disponible (140 à 160°) ne recouvre que 22 % de cette zone. Sa source "
+    + "n'est pas une étude évaluée par des pairs : la divergence n'est donc pas tranchée." },
+
+  hauteurImpact: { origine: 'enseignement', texte:
+    "Zone posée entre hanche et épaule. La mesure publiée la plus proche — 0,95 m au-dessus du "
+    + "sol chez les professionnels — ne mesure pas la même chose : c'est la hauteur de la balle "
+    + "depuis le sol, alors que l'app mesure le poignet par rapport au bassin et à l'épaule. "
+    + "Les deux ne sont pas convertibles sans connaître la taille du joueur et la position de la "
+    + "raquette : cette valeur ne peut donc ni confirmer ni corriger la zone." },
+
+  stabiliteBassin: { origine: 'enseignement', texte:
+    "Repère « reste ancré au moment du contact », exprimé en largeurs d'épaules. Aucune mesure "
+    + "derrière. La zone a été élargie de 0,25 à 0,45 après avoir constaté qu'elle sanctionnait "
+    + "un joueur qui courait simplement vers la balle — une correction faite sur constat, pas "
+    + "sur mesure." },
+
+  stabiliteTete: { origine: 'enseignement', texte:
+    "Repère « garde le regard sur la balle ». Aucune mesure derrière. Le déplacement est compté "
+    + "par rapport au bassin, pour ne pas compter comme mouvement de tête le simple fait de courir." },
+
+  accompagnement: { origine: 'enseignement', texte:
+    "Repère « termine ton geste », exprimé en largeurs d'épaules. Aucune mesure derrière. Le "
+    + "test à deux angles de caméra a montré que cette mesure diverge du tout au tout selon la "
+    + "position du trépied : à ne comparer qu'entre séances filmées au même endroit." },
+
+  coudeService: { origine: 'enseignement', texte:
+    "Consigne « frappe au point le plus haut, bras tendu ». Aucun repère chiffré trouvé pour "
+    + "l'angle du coude au contact du service." },
+
+  flexionService: { origine: 'enseignement', texte:
+    "Consigne d'entraînement. Divergence assumée et non résolue : la norme couramment citée dans "
+    + "la littérature du service est 110 à 120°, soit une flexion nettement plus marquée que "
+    + "cette zone, qu'elle ne recouvre pas du tout. Cette zone est donc probablement trop "
+    + "indulgente. Elle n'a pas été déplacée faute de savoir si les deux mesures désignent bien "
+    + "le même angle." },
+};
+
+/**
+ * Origine des constantes de détection, distinctes des zones à viser : elles ne disent pas ce
+ * qui est bien, elles disent ce qui est une frappe et ce qui n'en est pas une.
+ */
+const PROVENANCE_DETECTION = [
+  { nom: "Écart minimal entre les mains pour un revers à deux mains", valeur: "0,6 longueur de tronc",
+    origine: 'banc', texte:
+      "Vérifié sur huit configurations — revers à deux mains et coup droit, gaucher et droitier, "
+      + "de face et de profil : 100 % de classements justes, contre 38 à 50 % de profil avec le "
+      + "repère précédent, qui dépendait du côté du bras." },
+  { nom: "Voisinage et domination entre deux pics de vitesse", valeur: "1,0 s et 1,25×",
+    origine: 'banc', texte:
+      "Choisi sur neuf situations types — replacement à 60, 75 et 85 % de la vitesse de frappe, "
+      + "deux volées rapprochées, échange normal : 8 cas justes sur 9, contre 6 sur 9 avec les "
+      + "valeurs précédentes." },
+  { nom: "Vitesse au-delà de laquelle la détection a changé de personne", valeur: "25 largeurs d'épaules/s",
+    origine: 'calcul', texte:
+      "Un sprint de 5 m/s pour une largeur d'épaules de 0,40 m fait 12,5 largeurs par seconde. "
+      + "La limite est posée au double, pour ne jamais accuser de « saut de détection » un joueur "
+      + "qui court vraiment vite." },
+  { nom: "Marge d'erreur sous laquelle aucun verdict n'est rendu", valeur: "± 10° sur les angles",
+    origine: 'etude', texte:
+      "L'estimation de posture par caméra unique se trompe en moyenne d'une dizaine de degrés sur "
+      + "les angles articulaires en mouvement rapide, et de 2 à 4 cm sur la position des "
+      + "articulations, le coude étant le pire cas." },
+  { nom: "Détection minimale pour rendre un verdict", valeur: "70 % des images",
+    origine: 'enseignement', texte:
+      "Seuil recommandé en relecture experte, retenu tel quel. Aucune mesure ne l'établit : c'est "
+      + "un choix de prudence, pas un résultat." },
+  { nom: "Vitesse de poignet minimale pour qu'il s'agisse d'une frappe", valeur: "2,2 largeurs d'épaules/s",
+    origine: 'enseignement', texte:
+      "Plancher posé pour éviter de prendre un replacement lent pour une frappe. Aucune mesure "
+      + "derrière : il a été fixé puis conservé parce qu'il ne produisait pas de fausses frappes "
+      + "sur le banc d'essai de détection." },
+];
+
+/**
  * Marge d'erreur propre à la mesure par vidéo, sous laquelle aucune différence n'est réelle.
  *
  * L'estimation de posture par caméra unique se trompe en moyenne d'une dizaine de degrés sur
@@ -1666,6 +1818,29 @@ const INCERTITUDE_MESURE = {
   deplacementBassin: 0.08,
   accompagnement: 0.08,
 };
+
+/**
+ * Recouvrement entre une zone de l'app et une plage publiée, en pourcentage de la zone.
+ *
+ * Écrire « ce repère converge avec la zone de l'app » dans un texte, c'est une affirmation
+ * qui ne se vérifie jamais et qui devient fausse dès qu'on touche à la zone. Le rapprochement
+ * est donc calculé à l'affichage, à partir des deux plages de chiffres.
+ */
+function recouvrement(plage) {
+  const seuil = SEUILS[plage.zone];
+  if (!seuil) return null;
+  const [z0, z1] = seuil.ideal;
+  const lo = Math.max(z0, plage.min), hi = Math.min(z1, plage.max);
+  const largeur = z1 - z0;
+  if (!(largeur > 0)) return null;
+  const part = hi > lo ? (hi - lo) / largeur : 0;
+  return {
+    zone: [z0, z1], publie: [plage.min, plage.max], quoi: plage.quoi,
+    commun: hi > lo ? [lo, hi] : null,
+    part,
+    verdict: part === 0 ? 'aucun' : part >= 0.75 ? 'large' : part >= 0.35 ? 'partiel' : 'faible',
+  };
+}
 
 /** Références concernant une mesure, éventuellement filtrées par type de coup. */
 function referencesPour(cle, type) {
@@ -1906,18 +2081,39 @@ async function chargerDetecteur(onStatut = () => {}) {
  * `requestVideoFrameCallback` ne se déclenche qu'une fois l'image prête ; à défaut, deux
  * tours d'affichage donnent la même garantie de façon approchée.
  */
+/**
+ * Certains navigateurs n'appellent jamais `requestVideoFrameCallback` sur une vidéo en pause.
+ * Un simple délai de secours suffirait à ne pas bloquer, mais il serait payé sur CHAQUE image :
+ * 60 ms × 600 images, c'est plus de trente secondes ajoutées à l'analyse. On ne l'accepte donc
+ * que trois fois : après trois échecs d'affilée, le rappel est réputé inopérant sur cet
+ * appareil et on passe définitivement au repli par tours d'affichage.
+ */
+const ATTENTE_IMAGE = { utilisable: true, echecs: 0 };
+const DELAI_SECOURS = 60;      // ms
+const ECHECS_AVANT_REPLI = 3;
+
+function parToursDAffichage() {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
 function imagePrete(video) {
+  if (!ATTENTE_IMAGE.utilisable || typeof video.requestVideoFrameCallback !== 'function') {
+    return parToursDAffichage();
+  }
   return new Promise((resolve) => {
-    if (typeof video.requestVideoFrameCallback === 'function') {
-      let rendu = false;
-      const fini = () => { if (!rendu) { rendu = true; resolve(); } };
-      video.requestVideoFrameCallback(fini);
-      // Filet de sécurité : sur une vidéo en pause, certains navigateurs n'appellent jamais
-      // ce rappel. Sans lui, l'analyse resterait bloquée sur une image.
-      setTimeout(fini, 60);
-      return;
-    }
-    requestAnimationFrame(() => requestAnimationFrame(resolve));
+    let rendu = false;
+    const fini = (parLeRappel) => {
+      if (rendu) return;
+      rendu = true;
+      if (parLeRappel) {
+        ATTENTE_IMAGE.echecs = 0;
+      } else if (++ATTENTE_IMAGE.echecs >= ECHECS_AVANT_REPLI) {
+        ATTENTE_IMAGE.utilisable = false;
+      }
+      resolve();
+    };
+    video.requestVideoFrameCallback(() => fini(true));
+    setTimeout(() => fini(false), DELAI_SECOURS);
   });
 }
 
@@ -2563,10 +2759,18 @@ function diagnostiquerFrappes(series, vitesse) {
 /* ------------------------------------------------------------------ */
 
 const LIBELLES_ANGLE = {
-  cote: 'sur le côté du joueur',
-  face: 'devant le joueur',
-  dos: 'derrière le joueur',
+  cote: 'sur le côté',
+  face: 'de face',
+  dos: 'de dos',
   autre: 'en diagonale',
+};
+
+/** Ce que chaque position de caméra permet — et ne permet pas — de mesurer. */
+const APPORT_ANGLE = {
+  cote: 'idéal pour le coup droit et le revers',
+  face: 'idéal pour le service, moins fiable pour les angles de bras en fond de court',
+  dos: 'bon pour le service et les appuis',
+  autre: "l'orientation change trop pour trancher",
 };
 
 /**
@@ -2818,16 +3022,28 @@ function mesuresJugeables(type) {
 }
 
 /** Le seuil à appliquer dépend du coup : un service se juge autrement qu'un coup droit. */
-function seuilPour(cle, type, revers = 'deux') {
-  if (type === 'service' && cle === 'coudeImpact') return SEUILS.coudeService;
-  if (type === 'service' && cle === 'flexionGenou') return SEUILS.flexionService;
+/**
+ * Nom de la zone qui s'applique à une mesure, pour un coup donné.
+ *
+ * Nommer la zone et la lire sont deux besoins distincts : l'affichage doit pouvoir dire d'où
+ * vient la zone employée, sans réécrire ces règles pour son compte — c'est ainsi qu'on se
+ * retrouve avec trois versions de la même correspondance, dont deux périmées.
+ */
+function cleSeuilPour(cle, type, revers = 'deux') {
+  if (type === 'service' && cle === 'coudeImpact') return 'coudeService';
+  if (type === 'service' && cle === 'flexionGenou') return 'flexionService';
   // Un revers à deux mains se joue coudes fléchis : lui appliquer la référence du coup
   // droit revenait à lui reprocher systématiquement un « bras trop plié ».
-  if (cle === 'coudeImpact' && type === 'revers' && revers === 'deux') return SEUILS.coudeRevers2M;
-  return { hauteurImpact: SEUILS.hauteurImpact, coudeImpact: SEUILS.coudeImpact,
-    rotationEpaules: SEUILS.rotationEpaules, flexionGenou: SEUILS.flexionGenou,
-    accompagnement: SEUILS.accompagnement, deplacementTete: SEUILS.stabiliteTete,
-    deplacementBassin: SEUILS.stabiliteBassin }[cle] || null;
+  if (cle === 'coudeImpact' && type === 'revers' && revers === 'deux') return 'coudeRevers2M';
+  return { hauteurImpact: 'hauteurImpact', coudeImpact: 'coudeImpact',
+    rotationEpaules: 'rotationEpaules', flexionGenou: 'flexionGenou',
+    accompagnement: 'accompagnement', deplacementTete: 'stabiliteTete',
+    deplacementBassin: 'stabiliteBassin' }[cle] || null;
+}
+
+function seuilPour(cle, type, revers = 'deux') {
+  const nom = cleSeuilPour(cle, type, revers);
+  return nom ? SEUILS[nom] || null : null;
 }
 
 /**
@@ -3381,15 +3597,12 @@ function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte
   }
 
   if (camera && frappes.length) {
-    const dit = {
-      cote: 'sur le côté du joueur — idéal pour le coup droit et le revers',
-      face: 'devant le joueur — idéal pour le service, moins fiable pour les angles de bras en fond de court',
-      dos: 'derrière le joueur — bon pour le service et les appuis',
-      autre: "en diagonale, ou l'orientation change trop pour trancher",
-    }[camera.angle];
+    const dit = LIBELLES_ANGLE[camera.angle]
+      ? `${LIBELLES_ANGLE[camera.angle]} — ${APPORT_ANGLE[camera.angle]}`
+      : undefined;
     c.push({
       niveau: 'info', coup: 'Prise de vue',
-      titre: `Caméra détectée : ${{ cote: 'sur le côté', face: 'de face', dos: 'de dos', autre: 'en diagonale' }[camera.angle]}`,
+      titre: `Caméra détectée : ${LIBELLES_ANGLE[camera.angle] || 'position indéterminée'}`,
       detail: `La position de la caméra est déduite de ta posture, tu n'as rien à renseigner : ${dit}.` +
         (camera.confiance < 0.5 ? " Détection peu sûre sur cette vidéo." : ''),
     });
@@ -4313,6 +4526,7 @@ function importerHistorique(donnees) {
  * sont comparables et lesquelles ne le sont pas.
  */
 
+
 const CLE_REFERENCE = 'dial-tennis-protocole';
 
 /** La marche à suivre, volontairement courte : un protocole qu'on ne suit pas ne sert à rien. */
@@ -4329,7 +4543,7 @@ const CRITERES = [
   {
     cle: 'angleCamera', libelle: 'Position de la caméra', bloquant: true,
     egal: (a, b) => a === b,
-    dire: (ref, cur) => `caméra ${LIB_ANGLE[cur] || cur} cette fois, ${LIB_ANGLE[ref] || ref} pour la référence`,
+    dire: (ref, cur) => `caméra ${LIBELLES_ANGLE[cur] || cur} cette fois, ${LIBELLES_ANGLE[ref] || ref} pour la référence`,
   },
   {
     cle: 'coup', libelle: 'Coup filmé', bloquant: true,
@@ -4350,7 +4564,6 @@ const CRITERES = [
   },
 ];
 
-const LIB_ANGLE = { cote: 'sur le côté', face: 'de face', dos: 'de dos', autre: 'en diagonale' };
 
 function lireReference() {
   try {
@@ -5451,6 +5664,27 @@ const ETIQUETTE_NATURE = {
   'site-technique': 'source technique, non évaluée par des pairs',
 };
 
+/**
+ * D'où vient la zone à viser affichée pour une mesure. Sans cette mention, une consigne de
+ * club et une valeur mesurée s'affichent exactement pareil, et le joueur ne peut pas savoir
+ * lesquelles de ses « fautes » reposent sur quelque chose.
+ */
+function blocProvenance(cle, typeCoup, revers) {
+  // La zone employée est nommée par le moteur, pas devinée ici : le service et le revers à
+  // deux mains ont chacun la leur, et l'origine affichée doit suivre la zone réellement
+  // appliquée.
+  const p = PROVENANCE[cleSeuilPour(cle, typeCoup, revers)];
+  const bloc = el('div', `provenance ${p ? p.origine : 'enseignement'}`);
+  if (!p) {
+    bloc.textContent = "L'origine de cette zone n'est pas documentée.";
+    return bloc;
+  }
+  bloc.innerHTML = `<p><strong>D'où vient cette zone :</strong> `
+    + `<span class="prov-etiquette">${echapper(ORIGINES[p.origine])}</span></p>`
+    + `<p class="prov-texte">${echapper(p.texte)}</p>`;
+  return bloc;
+}
+
 function carteReference(ref) {
   const carte = el('div', 'reference');
   const c = ETIQUETTE_COMPARABLE[ref.comparable] || ETIQUETTE_COMPARABLE.partiel;
@@ -5462,6 +5696,19 @@ function carteReference(ref) {
     + ` · ${echapper(ETIQUETTE_NATURE[ref.nature] || ref.nature)}</p>`
     + `<p class="ref-meta">Convention de mesure : ${echapper(ref.convention)}</p>`
     + `<p class="ref-comparable ${c.classe}">Comparaison avec ta vidéo : ${echapper(c.texte)}.</p>`;
+
+  // Rapprochement calculé, jamais affirmé : si la zone de l'app change, ce chiffre suit.
+  for (const plage of ref.plages || []) {
+    const r = recouvrement(plage);
+    if (!r) continue;
+    const mots = { aucun: 'aucun recouvrement', faible: 'recouvrement faible',
+      partiel: 'recouvrement partiel', large: 'recouvrement large' }[r.verdict];
+    const p = el('p', `ref-ecart ${r.verdict === 'aucun' ? 'ko' : r.verdict === 'large' ? 'ok' : 'moyen'}`);
+    p.textContent = `Zone de l'app pour ${plage.quoi} : ${r.zone[0]} à ${r.zone[1]}. `
+      + `Valeur publiée : ${r.publie[0]} à ${r.publie[1]}. `
+      + `${mots} — ${Math.round(r.part * 100)} % de la zone de l'app.`;
+    carte.appendChild(p);
+  }
   return carte;
 }
 
@@ -5561,6 +5808,7 @@ function rendreMesures(a) {
           + `Un écart plus petit que cette marge n'est pas jugé.</p>`;
       }
       if (def.exercice) corps.innerHTML += `<p class="exo"><strong>Exercice :</strong> ${echapper(def.exercice)}</p>`;
+      if (seuil) corps.appendChild(blocProvenance(def.cle, g.type, a.profil?.revers));
       for (const ref of referencesPour(def.cle, g.type)) corps.appendChild(carteReference(ref));
       corps.appendChild(lienVideo(adapterRequete(def.requeteVideo, g.libelle, a.profil?.main), 'Voir des vidéos sur ce point'));
       carte.appendChild(corps);
@@ -5731,7 +5979,7 @@ function rendreProtocole(vue) {
   if (ref) {
     bloc.appendChild(el('p', 'note',
       `Séance de référence : ${echapper(dateLongue(ref.date))} — ` +
-      `caméra ${echapper({ cote: 'sur le côté', face: 'de face', dos: 'de dos', autre: 'en diagonale' }[ref.conditions.angleCamera] || '?')}, ` +
+      `caméra ${echapper(LIBELLES_ANGLE[ref.conditions.angleCamera] || '?')}, ` +
       `${echapper(String(ref.conditions.fps))} images/seconde.`));
   } else {
     bloc.appendChild(el('p', 'note',
@@ -6158,6 +6406,23 @@ function rendreFondamentaux(cible) {
     + "la source, et surtout ce qu'une vidéo de téléphone permet ou non de comparer."));
   for (const ref of REFERENCES) recherche.appendChild(carteReference(ref));
   cible.appendChild(recherche);
+
+  const origines = el('section', 'bloc-origines');
+  origines.appendChild(el('h3', null, "D'où viennent les chiffres de l'app"));
+  origines.appendChild(el('p', 'note',
+    "Deux familles de chiffres. Les zones à viser disent ce qui est bien ; les constantes de "
+    + "détection disent ce qui est une frappe. Les premières viennent toutes de l'enseignement "
+    + "classique — aucune n'est issue d'une mesure, et l'app le dit sur chaque mesure plutôt que "
+    + "de laisser croire le contraire. Les secondes ont été choisies sur des bancs d'essai "
+    + "chiffrés, ou déduites par le calcul."));
+  for (const d of PROVENANCE_DETECTION) {
+    const carte = el('div', `provenance ${d.origine}`);
+    carte.innerHTML = `<p><strong>${echapper(d.nom)} : ${echapper(d.valeur)}</strong> `
+      + `<span class="prov-etiquette">${echapper(ORIGINES[d.origine])}</span></p>`
+      + `<p class="prov-texte">${echapper(d.texte)}</p>`;
+    origines.appendChild(carte);
+  }
+  cible.appendChild(origines);
 
   cible.appendChild(el('h3', null, 'Des chaînes qui expliquent bien'));
   const chaines = el('ul', 'chaines');

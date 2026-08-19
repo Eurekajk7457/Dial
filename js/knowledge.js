@@ -649,6 +649,8 @@ export const REFERENCES = [
   },
   {
     cles: ['coudeImpact'], coups: ['revers'],
+    plages: [{ zone: 'coudeImpact', min: 160, max: 175, quoi: 'revers à une main' },
+             { zone: 'coudeRevers2M', min: 140, max: 160, quoi: 'revers à deux mains' }],
     titre: "Extension du bras à l'impact en revers",
     valeur: "Environ 160 à 175° à une main, 140 à 160° à deux mains.",
     population: "Repères d'analyse technique, non issus d'une étude évaluée par des pairs",
@@ -656,7 +658,8 @@ export const REFERENCES = [
     convention: "Angle intérieur du coude, 180° = bras tendu.",
     comparable: 'oui',
     lecon: "À une main le bras se tend presque complètement pour aller chercher la balle ; à "
-      + "deux mains il reste fléchi. Ce repère converge avec la zone utilisée par l'app.",
+      + "deux mains il reste fléchi. L'app retient des zones plus larges et plus basses : le "
+      + "recouvrement avec ces valeurs est partiel, et calculé ci-dessous plutôt qu'affirmé.",
   },
   {
     cles: ['coudeImpact'], coups: ['coup-droit'],
@@ -674,6 +677,7 @@ export const REFERENCES = [
   },
   {
     cles: ['flexionService'], coups: ['service'],
+    plages: [{ zone: 'flexionService', min: 110, max: 120, quoi: 'la flexion au service' }],
     titre: "Flexion des genoux au service",
     valeur: "110 à 120° est la norme couramment citée. Un entraînement ayant augmenté la flexion "
       + "de 31° a fait gagner 1,38 km/h de vitesse de raquette.",
@@ -682,7 +686,9 @@ export const REFERENCES = [
     convention: "Angle intérieur du genou au point le plus bas, 180° = jambe tendue.",
     comparable: 'oui',
     lecon: "Plus de flexion réduit aussi les contraintes mesurées au coude et à l'épaule : "
-      + "c'est autant une question de blessure que de puissance.",
+      + "c'est autant une question de blessure que de puissance. Attention : cette norme "
+      + "demande de plier NETTEMENT plus que la zone retenue par l'app, qui est donc "
+      + "probablement trop indulgente sur ce point.",
   },
   {
     cles: ['flexionGenou'], coups: ['coup-droit', 'revers'],
@@ -712,6 +718,117 @@ export const REFERENCES = [
 ];
 
 /**
+ * D'où vient chaque zone. Quatre origines, et une seule est solide.
+ *
+ * La distinction compte pour le joueur : une zone tirée d'une mesure publiée et une zone
+ * héritée d'une consigne de club ne se contredisent pas de la même façon. Les afficher
+ * toutes de la même manière laissait croire que tout se valait.
+ *
+ *   etude        une mesure publiée soutient la valeur
+ *   calcul       la valeur se déduit d'une grandeur physique, par le calcul
+ *   banc         la valeur a été choisie sur un banc d'essai de l'app, chiffres à l'appui
+ *   enseignement consigne d'entraînement courante — aucune mesure derrière, et c'est dit
+ */
+export const ORIGINES = {
+  etude: "mesure publiée",
+  calcul: "déduit par le calcul",
+  banc: "choisi sur banc d'essai",
+  enseignement: "consigne d'entraînement, non mesurée",
+};
+
+export const PROVENANCE = {
+  flexionGenou: { origine: 'enseignement', texte:
+    "Consigne classique « fléchis avant de frapper ». Aucune norme chiffrée trouvée dans la "
+    + "littérature : la revue systématique de 2023 conclut que la flexion dépend surtout de la "
+    + "situation — nettement plus marquée en appui ouvert défensif — et que les joueurs de haut "
+    + "niveau ne se distinguent que par le moment où ils fléchissent, pas par l'angle atteint. "
+    + "À lire comme un repère, pas comme une norme." },
+
+  rotationEpaules: { origine: 'enseignement', texte:
+    "Cette mesure est un rapport de largeurs d'épaules apparentes, propre à l'app : elle n'a "
+    + "pas d'équivalent dans la littérature, qui mesure des degrés en capture 3D. La zone a été "
+    + "posée pour que « épaules nettement de profil » tombe dedans, sans mesure derrière." },
+
+  coudeImpact: { origine: 'enseignement', texte:
+    "Consigne « bras allongé mais pas verrouillé ». Le seul repère chiffré trouvé pour le revers "
+    + "à une main (160 à 175°) ne recouvre que 38 % de cette zone, plus large et plus basse." },
+
+  coudeRevers2M: { origine: 'enseignement', texte:
+    "Posée à part du coup droit parce que le bras dominant ne se tend jamais autant à deux mains. "
+    + "Le repère chiffré disponible (140 à 160°) ne recouvre que 22 % de cette zone. Sa source "
+    + "n'est pas une étude évaluée par des pairs : la divergence n'est donc pas tranchée." },
+
+  hauteurImpact: { origine: 'enseignement', texte:
+    "Zone posée entre hanche et épaule. La mesure publiée la plus proche — 0,95 m au-dessus du "
+    + "sol chez les professionnels — ne mesure pas la même chose : c'est la hauteur de la balle "
+    + "depuis le sol, alors que l'app mesure le poignet par rapport au bassin et à l'épaule. "
+    + "Les deux ne sont pas convertibles sans connaître la taille du joueur et la position de la "
+    + "raquette : cette valeur ne peut donc ni confirmer ni corriger la zone." },
+
+  stabiliteBassin: { origine: 'enseignement', texte:
+    "Repère « reste ancré au moment du contact », exprimé en largeurs d'épaules. Aucune mesure "
+    + "derrière. La zone a été élargie de 0,25 à 0,45 après avoir constaté qu'elle sanctionnait "
+    + "un joueur qui courait simplement vers la balle — une correction faite sur constat, pas "
+    + "sur mesure." },
+
+  stabiliteTete: { origine: 'enseignement', texte:
+    "Repère « garde le regard sur la balle ». Aucune mesure derrière. Le déplacement est compté "
+    + "par rapport au bassin, pour ne pas compter comme mouvement de tête le simple fait de courir." },
+
+  accompagnement: { origine: 'enseignement', texte:
+    "Repère « termine ton geste », exprimé en largeurs d'épaules. Aucune mesure derrière. Le "
+    + "test à deux angles de caméra a montré que cette mesure diverge du tout au tout selon la "
+    + "position du trépied : à ne comparer qu'entre séances filmées au même endroit." },
+
+  coudeService: { origine: 'enseignement', texte:
+    "Consigne « frappe au point le plus haut, bras tendu ». Aucun repère chiffré trouvé pour "
+    + "l'angle du coude au contact du service." },
+
+  flexionService: { origine: 'enseignement', texte:
+    "Consigne d'entraînement. Divergence assumée et non résolue : la norme couramment citée dans "
+    + "la littérature du service est 110 à 120°, soit une flexion nettement plus marquée que "
+    + "cette zone, qu'elle ne recouvre pas du tout. Cette zone est donc probablement trop "
+    + "indulgente. Elle n'a pas été déplacée faute de savoir si les deux mesures désignent bien "
+    + "le même angle." },
+};
+
+/**
+ * Origine des constantes de détection, distinctes des zones à viser : elles ne disent pas ce
+ * qui est bien, elles disent ce qui est une frappe et ce qui n'en est pas une.
+ */
+export const PROVENANCE_DETECTION = [
+  { nom: "Écart minimal entre les mains pour un revers à deux mains", valeur: "0,6 longueur de tronc",
+    origine: 'banc', texte:
+      "Vérifié sur huit configurations — revers à deux mains et coup droit, gaucher et droitier, "
+      + "de face et de profil : 100 % de classements justes, contre 38 à 50 % de profil avec le "
+      + "repère précédent, qui dépendait du côté du bras." },
+  { nom: "Voisinage et domination entre deux pics de vitesse", valeur: "1,0 s et 1,25×",
+    origine: 'banc', texte:
+      "Choisi sur neuf situations types — replacement à 60, 75 et 85 % de la vitesse de frappe, "
+      + "deux volées rapprochées, échange normal : 8 cas justes sur 9, contre 6 sur 9 avec les "
+      + "valeurs précédentes." },
+  { nom: "Vitesse au-delà de laquelle la détection a changé de personne", valeur: "25 largeurs d'épaules/s",
+    origine: 'calcul', texte:
+      "Un sprint de 5 m/s pour une largeur d'épaules de 0,40 m fait 12,5 largeurs par seconde. "
+      + "La limite est posée au double, pour ne jamais accuser de « saut de détection » un joueur "
+      + "qui court vraiment vite." },
+  { nom: "Marge d'erreur sous laquelle aucun verdict n'est rendu", valeur: "± 10° sur les angles",
+    origine: 'etude', texte:
+      "L'estimation de posture par caméra unique se trompe en moyenne d'une dizaine de degrés sur "
+      + "les angles articulaires en mouvement rapide, et de 2 à 4 cm sur la position des "
+      + "articulations, le coude étant le pire cas." },
+  { nom: "Détection minimale pour rendre un verdict", valeur: "70 % des images",
+    origine: 'enseignement', texte:
+      "Seuil recommandé en relecture experte, retenu tel quel. Aucune mesure ne l'établit : c'est "
+      + "un choix de prudence, pas un résultat." },
+  { nom: "Vitesse de poignet minimale pour qu'il s'agisse d'une frappe", valeur: "2,2 largeurs d'épaules/s",
+    origine: 'enseignement', texte:
+      "Plancher posé pour éviter de prendre un replacement lent pour une frappe. Aucune mesure "
+      + "derrière : il a été fixé puis conservé parce qu'il ne produisait pas de fausses frappes "
+      + "sur le banc d'essai de détection." },
+];
+
+/**
  * Marge d'erreur propre à la mesure par vidéo, sous laquelle aucune différence n'est réelle.
  *
  * L'estimation de posture par caméra unique se trompe en moyenne d'une dizaine de degrés sur
@@ -734,6 +851,29 @@ export const INCERTITUDE_MESURE = {
   deplacementBassin: 0.08,
   accompagnement: 0.08,
 };
+
+/**
+ * Recouvrement entre une zone de l'app et une plage publiée, en pourcentage de la zone.
+ *
+ * Écrire « ce repère converge avec la zone de l'app » dans un texte, c'est une affirmation
+ * qui ne se vérifie jamais et qui devient fausse dès qu'on touche à la zone. Le rapprochement
+ * est donc calculé à l'affichage, à partir des deux plages de chiffres.
+ */
+export function recouvrement(plage) {
+  const seuil = SEUILS[plage.zone];
+  if (!seuil) return null;
+  const [z0, z1] = seuil.ideal;
+  const lo = Math.max(z0, plage.min), hi = Math.min(z1, plage.max);
+  const largeur = z1 - z0;
+  if (!(largeur > 0)) return null;
+  const part = hi > lo ? (hi - lo) / largeur : 0;
+  return {
+    zone: [z0, z1], publie: [plage.min, plage.max], quoi: plage.quoi,
+    commun: hi > lo ? [lo, hi] : null,
+    part,
+    verdict: part === 0 ? 'aucun' : part >= 0.75 ? 'large' : part >= 0.35 ? 'partiel' : 'faible',
+  };
+}
 
 /** Références concernant une mesure, éventuellement filtrées par type de coup. */
 export function referencesPour(cle, type) {

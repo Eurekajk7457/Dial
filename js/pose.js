@@ -85,18 +85,39 @@ export async function chargerDetecteur(onStatut = () => {}) {
  * `requestVideoFrameCallback` ne se déclenche qu'une fois l'image prête ; à défaut, deux
  * tours d'affichage donnent la même garantie de façon approchée.
  */
+/**
+ * Certains navigateurs n'appellent jamais `requestVideoFrameCallback` sur une vidéo en pause.
+ * Un simple délai de secours suffirait à ne pas bloquer, mais il serait payé sur CHAQUE image :
+ * 60 ms × 600 images, c'est plus de trente secondes ajoutées à l'analyse. On ne l'accepte donc
+ * que trois fois : après trois échecs d'affilée, le rappel est réputé inopérant sur cet
+ * appareil et on passe définitivement au repli par tours d'affichage.
+ */
+export const ATTENTE_IMAGE = { utilisable: true, echecs: 0 };
+const DELAI_SECOURS = 60;      // ms
+const ECHECS_AVANT_REPLI = 3;
+
+function parToursDAffichage() {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
 function imagePrete(video) {
+  if (!ATTENTE_IMAGE.utilisable || typeof video.requestVideoFrameCallback !== 'function') {
+    return parToursDAffichage();
+  }
   return new Promise((resolve) => {
-    if (typeof video.requestVideoFrameCallback === 'function') {
-      let rendu = false;
-      const fini = () => { if (!rendu) { rendu = true; resolve(); } };
-      video.requestVideoFrameCallback(fini);
-      // Filet de sécurité : sur une vidéo en pause, certains navigateurs n'appellent jamais
-      // ce rappel. Sans lui, l'analyse resterait bloquée sur une image.
-      setTimeout(fini, 60);
-      return;
-    }
-    requestAnimationFrame(() => requestAnimationFrame(resolve));
+    let rendu = false;
+    const fini = (parLeRappel) => {
+      if (rendu) return;
+      rendu = true;
+      if (parLeRappel) {
+        ATTENTE_IMAGE.echecs = 0;
+      } else if (++ATTENTE_IMAGE.echecs >= ECHECS_AVANT_REPLI) {
+        ATTENTE_IMAGE.utilisable = false;
+      }
+      resolve();
+    };
+    video.requestVideoFrameCallback(() => fini(true));
+    setTimeout(() => fini(false), DELAI_SECOURS);
   });
 }
 
