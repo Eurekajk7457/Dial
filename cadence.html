@@ -647,6 +647,37 @@ details.protocole button { min-height: 38px; }
 .conformite.ko { border-left-color: var(--priorite); background: var(--priorite-fond); }
 .conformite .c-titre { margin: 0; font-weight: 600; }
 .conformite ul { margin: .35rem 0 0; padding-left: 1.1rem; color: var(--txt2); }
+
+/* --- Joueurs de référence ------------------------------------------------------------ */
+/* Une carte par modèle. Ceux qui correspondent exactement au profil sont marqués d'un
+   liseré vert ; ceux d'un profil voisin restent neutres, pour qu'on voie d'un coup d'œil
+   lesquels jouent vraiment du même côté que soi. */
+.modeles { margin-bottom: 26px; }
+.grille-modeles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.modele {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--primaire);
+  border-radius: var(--radius-s);
+  padding: 11px 13px;
+  background: var(--surface);
+}
+.modele.proche { border-left-color: var(--line-forte); background: var(--surface-2); }
+.modele h4 { margin: 0 0 2px; font-size: 15px; }
+.modele-profil { margin: 0 0 7px; font-size: 12px; color: var(--txt2); }
+.modele-style, .modele-regarder { margin: 0 0 7px; font-size: 13.5px; line-height: 1.45; }
+.modele .lien-yt { font-size: 13.5px; }
+
+/* Repères propres au gaucher, à l'intérieur d'une fiche technique. */
+.gaucher-titre { display: block; margin-top: 12px; }
+ul.gaucher { margin: 4px 0 0; }
+ul.gaucher li { margin-bottom: 4px; }
+.choix-modeles { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.choix-modeles select { flex: 1 1 150px; min-height: var(--touche); }
 </style>
 </head>
 <body>
@@ -885,6 +916,11 @@ details.protocole button { min-height: 38px; }
 const FONDAMENTAUX = [
   {
     id: 'coup-droit',
+    gaucher: [
+      "Ton coup droit croisé arrive dans le revers d'un droitier : c'est le schéma gagnant du gaucher, à jouer en priorité.",
+      "L'angle croisé dont tu disposes est plus ouvert que celui d'un droitier : sers-t'en pour sortir l'adversaire du court, pas seulement pour frapper fort.",
+      "Attention au piège symétrique : ton coup droit long de ligne arrive dans le coup droit adverse, souvent son meilleur coup.",
+    ],
     titre: 'Coup droit',
     resume: "Chaîne cinétique du sol vers la balle : jambes → hanches → épaules → bras → raquette.",
     points: [
@@ -910,6 +946,10 @@ const FONDAMENTAUX = [
   },
   {
     id: 'revers',
+    gaucher: [
+      "Face à un droitier, son coup droit croisé arrive sur ton revers : c'est le coup que tu subiras le plus souvent, donc celui à solidifier en premier.",
+      "Ton revers long de ligne ressort dans son revers : c'est ta porte de sortie quand tu es acculé.",
+    ],
     titre: 'Revers (une ou deux mains)',
     resume: "Le revers vit de la rotation du tronc et d'un appui avant solide.",
     points: [
@@ -934,6 +974,11 @@ const FONDAMENTAUX = [
   },
   {
     id: 'service',
+    gaucher: [
+      "Ton service extérieur côté avantage (à gauche du carré) sort le droitier du court sur son revers : c'est l'arme n°1 du gaucher, et c'est le côté des balles de break.",
+      "L'effet slice d'un gaucher fait dévier la balle dans l'autre sens que celui auquel l'adversaire est habitué : même à vitesse modeste, il gêne.",
+      "Travaille aussi le service au corps côté égalité, sinon l'adversaire s'installe sur ton extérieur.",
+    ],
     titre: 'Service',
     resume: "Le coup le plus technique : rythme, lancer, position armée, rotation, extension.",
     points: [
@@ -959,6 +1004,9 @@ const FONDAMENTAUX = [
   },
   {
     id: 'volee',
+    gaucher: [
+      "Ta volée de coup droit couvre le côté où le droitier passe le plus naturellement : place-toi en conséquence, légèrement décalé.",
+    ],
     titre: 'Volée',
     resume: "Court, ferme, devant soi : on bloque, on ne swingue pas.",
     points: [
@@ -1051,23 +1099,342 @@ function libelleZone(seuil, unite = '') {
  *  vidéo de coup droit à quelqu'un dont le défaut porte sur son revers est hors sujet : on
  *  remplace donc le nom du coup par celui réellement concerné. Les requêtes qui ne nomment
  *  aucun coup sont déjà valables partout et restent intactes. */
-function adapterRequete(requete, coup) {
-  if (!requete || !requete.includes('coup droit')) return requete;
+function adapterRequete(requete, coup, main) {
+  if (!requete) return requete;
+  let r = requete;
   const c = String(coup || '').toLowerCase();
-  if (!c || c.startsWith('g')) return requete;                 // « Général » : pas de coup visé
-  const volee = c.includes('volée') || c.includes('volee');
-  const cible = c.includes('service') ? 'service'
-    : volee ? (c.includes('revers') ? 'volée de revers' : 'volée de coup droit')
-      : c.includes('revers') ? 'revers' : 'coup droit';
-  return cible === 'coup droit' ? requete : requete.replace('coup droit', cible);
+  if (r.includes('coup droit') && c && !c.startsWith('g')) {   // « Général » : pas de coup visé
+    const volee = c.includes('volée') || c.includes('volee');
+    const cible = c.includes('service') ? 'service'
+      : volee ? (c.includes('revers') ? 'volée de revers' : 'volée de coup droit')
+        : c.includes('revers') ? 'revers' : 'coup droit';
+    if (cible !== 'coup droit') r = r.replace('coup droit', cible);
+  }
+  // Un gaucher qui regarde un droitier doit inverser mentalement chaque appui et chaque
+  // rotation. Chercher explicitement un gaucher lui évite ce travail de traduction.
+  if (main === 'left' && !r.includes('gaucher')) r += ' gaucher';
+  return r;
 }
 
 /** Requête vidéo pour un défaut, ou null s'il n'y a rien de pertinent à montrer.
  *  `coup` est le libellé du coup concerné (« Revers », « Service », « Général »…). */
-function videoConstat(titre, coup) {
+function videoConstat(titre, coup, main) {
   const req = VIDEOS_CONSTAT[titre];
-  return req ? { requete: adapterRequete(req, coup) } : null;
+  return req ? { requete: adapterRequete(req, coup, main) } : null;
 }
+
+
+/**
+ * Joueurs de référence, classés par main et par type de revers.
+ *
+ * Pourquoi une liste aussi longue : un gaucher qui regarde un droitier doit tout inverser
+ * mentalement, et un revers à une main ne s'apprend pas en regardant un revers à deux mains.
+ * Proposer « un ou deux » modèles revient donc, pour la plupart des joueurs, à n'en proposer
+ * aucun qui leur corresponde. Chaque profil doit trouver ici plusieurs modèles, d'époques et
+ * de styles différents, sans quoi le conseil « regarde untel » ne vaut rien.
+ *
+ * Ce qui est stocké ne se périme pas : main, type de revers, style de jeu. Aucun classement
+ * ni palmarès, qui seraient faux dans six mois.
+ */
+const MODELES = [
+  /* --- Gauchers, revers à deux mains ------------------------------------------------- */
+  { nom: 'Rafael Nadal', main: 'left', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Coup droit très lifté, finition en lasso au-dessus de la tête.",
+    regarder: "Comment la main remonte bien au-dessus de l'épaule après la balle : c'est le lift qui fait plonger la balle dans le court." },
+  { nom: 'Jack Draper', main: 'left', revers: 'deux', sexe: 'h', epoque: 'actuel',
+    style: "Service gaucher très lourd, coup droit long à armer.",
+    regarder: "L'angle du service extérieur côté avantage : la balle sort du court avant de rebondir." },
+  { nom: 'Ben Shelton', main: 'left', revers: 'deux', sexe: 'h', epoque: 'actuel',
+    style: "Jeu explosif, appuis très dynamiques.",
+    regarder: "La poussée des jambes au service : tout part du sol, le bras ne fait que suivre." },
+  { nom: 'Ugo Humbert', main: 'left', revers: 'deux', sexe: 'h', epoque: 'actuel',
+    style: "Frappe précoce, prise de balle très tôt après le rebond.",
+    regarder: "Le point d'impact, toujours devant le corps : il ne recule jamais pour frapper." },
+  { nom: 'Adrian Mannarino', main: 'left', revers: 'deux', sexe: 'h', epoque: 'actuel',
+    style: "Balles plates et tendues, gestes très courts.",
+    regarder: "L'économie du geste : presque pas de préparation, tout est dans le timing." },
+  { nom: 'Corentin Moutet', main: 'left', revers: 'deux', sexe: 'h', epoque: 'actuel',
+    style: "Main très fine, varie sans arrêt les effets et les hauteurs.",
+    regarder: "Comment il change de rythme sans changer de geste apparent." },
+  { nom: 'Cameron Norrie', main: 'left', revers: 'deux', sexe: 'h', epoque: 'actuel',
+    style: "Coup droit très atypique, poignet bloqué, régularité extrême.",
+    regarder: "La preuve qu'un geste peu académique peut fonctionner s'il est parfaitement répété." },
+  { nom: 'Fernando Verdasco', main: 'left', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Un des coups droits gauchers les plus puissants du circuit.",
+    regarder: "La rotation du buste : les épaules partent bien avant le bras." },
+  { nom: 'Jimmy Connors', main: 'left', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Balles plates, prise de balle très tôt, agressivité permanente.",
+    regarder: "Le retour de service pris dans le court, presque sur la ligne." },
+  { nom: 'Goran Ivanišević', main: 'left', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Le service gaucher de référence.",
+    regarder: "Le lancer de balle, très constant, légèrement sur la gauche pour ouvrir l'angle extérieur." },
+  { nom: 'Marcelo Ríos', main: 'left', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Fluidité et toucher, aucun effort apparent.",
+    regarder: "Le relâchement du bras : la raquette accélère seule à la fin du geste." },
+  { nom: 'Petr Korda', main: 'left', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Grande amplitude, revers à deux mains très pur.",
+    regarder: "Le buste qui reste de profil jusqu'à l'impact sur le revers." },
+  { nom: 'Thomas Muster', main: 'left', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Coup droit très lifté, jeu de fond de court sur terre battue.",
+    regarder: "La flexion des jambes avant chaque frappe : il frappe toujours de bas en haut." },
+
+  /* --- Gauchers, revers à une main (le profil le plus rare) --------------------------- */
+  { nom: 'Denis Shapovalov', main: 'left', revers: 'une', sexe: 'h', epoque: 'actuel',
+    style: "Le seul revers à une main gaucher du haut niveau actuel.",
+    regarder: "Le bras libre qui part vers l'arrière pour équilibrer : sans lui, le buste s'ouvre trop tôt." },
+  { nom: 'Feliciano López', main: 'left', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Service-volée gaucher, revers à une main coupé et attaqué.",
+    regarder: "Le slice de revers en approche : geste haut vers bas, la balle reste basse." },
+  { nom: 'Rod Laver', main: 'left', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Le modèle historique du gaucher complet.",
+    regarder: "Le poignet très actif dans le lift, rare pour l'époque." },
+  { nom: 'John McEnroe', main: 'left', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Service très fermé de profil, toucher de volée exceptionnel.",
+    regarder: "La position de départ au service, dos presque tourné au filet." },
+  { nom: 'Guillermo Vilas', main: 'left', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Revers à une main très lifté, endurance de fond de court.",
+    regarder: "La finition du revers, très haute, qui donne le lift." },
+  { nom: 'Henri Leconte', main: 'left', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Jeu instinctif, main gauche très douce.",
+    regarder: "La volée de revers à une main, prise très tôt devant le corps." },
+
+  /* --- Gauchères ---------------------------------------------------------------------- */
+  { nom: 'Martina Navratilova', main: 'left', revers: 'une', sexe: 'f', epoque: 'legende',
+    style: "Service-volée gauchère, revers à une main.",
+    regarder: "L'enchaînement service puis montée : le premier pas part avant la fin du geste." },
+  { nom: 'Monica Seles', main: 'left', revers: 'deux', sexe: 'f', epoque: 'legende',
+    style: "Deux mains des deux côtés, prise de balle très tôt.",
+    regarder: "La frappe montante, systématiquement dans la ligne montante du rebond." },
+  { nom: 'Petra Kvitová', main: 'left', revers: 'deux', sexe: 'f', epoque: 'legende',
+    style: "Frappe plate et très puissante des deux côtés.",
+    regarder: "La simplicité de la préparation : courte, directe, sans boucle inutile." },
+  { nom: 'Angelique Kerber', main: 'left', revers: 'deux', sexe: 'f', epoque: 'legende',
+    style: "Défense, déplacement latéral, contre-attaque.",
+    regarder: "Le déplacement : elle frappe presque toujours en équilibre, même en course." },
+  { nom: 'Markéta Vondroušová', main: 'left', revers: 'deux', sexe: 'f', epoque: 'actuel',
+    style: "Variation permanente : lift, slice, amorties.",
+    regarder: "Le slice de revers gaucher, qui glisse vers l'extérieur d'une droitière." },
+  { nom: 'Alexandra Eala', main: 'left', revers: 'deux', sexe: 'f', epoque: 'actuel',
+    style: "Jeu d'attaque gaucher, coup droit croisé très ouvert.",
+    regarder: "L'angle du coup droit croisé : le gaucher ouvre un angle qu'un droitier n'a pas." },
+  { nom: 'Lucie Šafářová', main: 'left', revers: 'deux', sexe: 'f', epoque: 'legende',
+    style: "Revers à deux mains gaucher très tendu.",
+    regarder: "La main non dominante qui tire le geste jusqu'au bout." },
+
+  /* --- Droitiers, revers à une main ---------------------------------------------------- */
+  { nom: 'Roger Federer', main: 'right', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "La référence technique du revers à une main moderne.",
+    regarder: "L'épaule avant qui pointe la balle jusqu'au dernier instant, puis l'ouverture du buste." },
+  { nom: 'Stan Wawrinka', main: 'right', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Le revers à une main le plus puissant du circuit moderne.",
+    regarder: "La flexion de la jambe avant : il descend sous la balle avant de monter dedans." },
+  { nom: 'Richard Gasquet', main: 'right', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Amplitude de préparation exceptionnelle sur le revers.",
+    regarder: "La boucle de préparation, très haute derrière l'épaule." },
+  { nom: 'Stefanos Tsitsipas', main: 'right', revers: 'une', sexe: 'h', epoque: 'actuel',
+    style: "Revers à une main de grande taille, appuis très fermés.",
+    regarder: "Le pied avant qui se plante avant la frappe : sans cet appui, le geste part en vrille." },
+  { nom: 'Grigor Dimitrov', main: 'right', revers: 'une', sexe: 'h', epoque: 'actuel',
+    style: "Gestes très fluides, proches de ceux de Federer.",
+    regarder: "Le relâchement du poignet à l'impact, sans crispation." },
+  { nom: 'Lorenzo Musetti', main: 'right', revers: 'une', sexe: 'h', epoque: 'actuel',
+    style: "Le revers à une main le mieux classé du circuit actuel, très varié.",
+    regarder: "Le passage du lift au slice sans changer de préparation." },
+  { nom: 'Dominic Thiem', main: 'right', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Revers à une main très lifté, frappé de loin derrière la ligne.",
+    regarder: "L'amplitude complète du geste, du bas du dos jusqu'au-dessus de la tête." },
+  { nom: 'Gustavo Kuerten', main: 'right', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Revers à une main lifté sur terre battue.",
+    regarder: "La rotation complète des épaules à la préparation : on voit son dos de l'autre côté." },
+  { nom: 'Pete Sampras', main: 'right', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Service-volée, revers à une main coupé ou attaqué.",
+    regarder: "L'extension au service, corps entièrement déployé vers la balle." },
+  { nom: 'Stefan Edberg', main: 'right', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Le modèle du service-volée et de la volée de revers.",
+    regarder: "La volée : geste court, la raquette ne passe jamais derrière l'épaule." },
+  { nom: 'Ivan Lendl', main: 'right', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Coup droit très lifté, jeu construit depuis le fond.",
+    regarder: "La régularité du point d'impact, toujours à la même hauteur." },
+  { nom: 'Ken Rosewall', main: 'right', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Le revers slice de référence.",
+    regarder: "Le plan de frappe : la raquette descend très peu, elle traverse la balle." },
+  { nom: 'Fabio Fognini', main: 'right', revers: 'une', sexe: 'h', epoque: 'legende',
+    style: "Revers à une main pris très tôt, main très fine.",
+    regarder: "La prise de balle montante en revers, rare à une main." },
+  { nom: 'Dušan Lajović', main: 'right', revers: 'une', sexe: 'h', epoque: 'actuel',
+    style: "Revers à une main classique, jeu de terre battue.",
+    regarder: "Le transfert du poids sur la jambe avant, très visible de profil." },
+
+  /* --- Droitières, revers à une main ---------------------------------------------------- */
+  { nom: 'Justine Henin', main: 'right', revers: 'une', sexe: 'f', epoque: 'legende',
+    style: "Le plus beau revers à une main du tennis féminin.",
+    regarder: "Le bras libre tendu vers l'arrière, exactement à l'opposé de la raquette." },
+  { nom: 'Amélie Mauresmo', main: 'right', revers: 'une', sexe: 'f', epoque: 'legende',
+    style: "Revers à une main puissant, jeu d'attaque et de montée au filet.",
+    regarder: "L'enchaînement revers long de ligne puis montée." },
+  { nom: 'Francesca Schiavone', main: 'right', revers: 'une', sexe: 'f', epoque: 'legende',
+    style: "Revers à une main très varié, beaucoup de slice.",
+    regarder: "Le slice défensif qui reste bas et casse le rythme de l'adversaire." },
+  { nom: 'Carla Suárez Navarro', main: 'right', revers: 'une', sexe: 'f', epoque: 'legende',
+    style: "Revers à une main de petite taille, timing parfait.",
+    regarder: "La preuve qu'un revers à une main ne demande pas de force, mais du timing." },
+  { nom: 'Tatjana Maria', main: 'right', revers: 'une', sexe: 'f', epoque: 'actuel',
+    style: "Slice des deux côtés, jeu très inhabituel.",
+    regarder: "Le slice de coup droit, quasiment disparu du jeu moderne." },
+  { nom: 'Lilli Tagger', main: 'right', revers: 'une', sexe: 'f', epoque: 'actuel',
+    style: "Jeune joueuse au revers à une main très ample.",
+    regarder: "La préparation haute et la finition très longue vers la cible." },
+  { nom: 'Steffi Graf', main: 'right', revers: 'une', sexe: 'f', epoque: 'legende',
+    style: "Coup droit dévastateur, revers presque toujours coupé.",
+    regarder: "Le déplacement autour de la balle pour jouer le coup droit à la place du revers." },
+
+  /* --- Droitiers, revers à deux mains --------------------------------------------------- */
+  { nom: 'Novak Djokovic', main: 'right', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Le revers à deux mains de référence, souplesse extrême.",
+    regarder: "L'équilibre : le buste reste vertical même en glissade." },
+  { nom: 'Carlos Alcaraz', main: 'right', revers: 'deux', sexe: 'h', epoque: 'actuel',
+    style: "Jeu complet, coup droit très lifté, amorties fréquentes.",
+    regarder: "L'accélération du bras sur les derniers centimètres avant la balle." },
+  { nom: 'Jannik Sinner', main: 'right', revers: 'deux', sexe: 'h', epoque: 'actuel',
+    style: "Frappe très propre des deux côtés, prise de balle précoce.",
+    regarder: "La constance du geste : deux frappes de suite sont pratiquement superposables." },
+  { nom: 'Daniil Medvedev', main: 'right', revers: 'deux', sexe: 'h', epoque: 'actuel',
+    style: "Position très reculée, bras tendu, geste plat.",
+    regarder: "Un exemple de technique non conforme qui fonctionne par la régularité." },
+  { nom: 'Andy Murray', main: 'right', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Revers à deux mains long de ligne, jeu de contre.",
+    regarder: "La rotation d'épaules à la préparation du revers, très marquée." },
+  { nom: 'Andre Agassi', main: 'right', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Prise de balle la plus tôt de son époque.",
+    regarder: "Le retour de service pris dans la ligne montante, à l'intérieur du court." },
+  { nom: 'Björn Borg', main: 'right', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Lift des deux côtés, régularité absolue.",
+    regarder: "La finition très haute, qui donne la marge au-dessus du filet." },
+  { nom: 'Juan Martín del Potro', main: 'right', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Coup droit parmi les plus puissants jamais vus.",
+    regarder: "La ligne d'épaules à l'impact : parfaitement perpendiculaire au filet." },
+  { nom: 'Gaël Monfils', main: 'right', revers: 'deux', sexe: 'h', epoque: 'actuel',
+    style: "Athlétisme, défense, frappes en déséquilibre.",
+    regarder: "Comment il retrouve un appui après chaque course : le pas d'arrêt." },
+  { nom: 'Jo-Wilfried Tsonga', main: 'right', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Service puissant, coup droit d'attaque, jeu vers l'avant.",
+    regarder: "L'enchaînement coup droit puis montée au filet." },
+  { nom: 'David Ferrer', main: 'right', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Jeu de jambes et régularité, sans coup exceptionnel.",
+    regarder: "Le nombre de petits pas d'ajustement avant chaque frappe." },
+  { nom: 'Alex de Minaur', main: 'right', revers: 'deux', sexe: 'h', epoque: 'actuel',
+    style: "Vitesse de déplacement, contre-attaque.",
+    regarder: "Le split-step, systématique et parfaitement synchronisé avec la frappe adverse." },
+  { nom: 'Casper Ruud', main: 'right', revers: 'deux', sexe: 'h', epoque: 'actuel',
+    style: "Coup droit très lifté, jeu de fond de court sur terre battue.",
+    regarder: "La trajectoire haute au-dessus du filet, qui retombe court dans le carré." },
+  { nom: 'Lleyton Hewitt', main: 'right', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Passing-shots, défense transformée en attaque.",
+    regarder: "Le passing de revers croisé, frappé en pleine course." },
+  { nom: 'Marat Safin', main: 'right', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Frappe plate et lourde des deux côtés.",
+    regarder: "L'amplitude du revers à deux mains, geste très long." },
+  { nom: 'Michael Chang', main: 'right', revers: 'deux', sexe: 'h', epoque: 'legende',
+    style: "Petit gabarit, endurance, jeu de jambes.",
+    regarder: "Comment il compense la taille par la vitesse de placement." },
+
+  /* --- Droitières, revers à deux mains --------------------------------------------------- */
+  { nom: 'Serena Williams', main: 'right', revers: 'deux', sexe: 'f', epoque: 'legende',
+    style: "Service et coup droit les plus puissants du tennis féminin.",
+    regarder: "La poussée de jambes au service, et le temps d'armé très court." },
+  { nom: 'Venus Williams', main: 'right', revers: 'deux', sexe: 'f', epoque: 'legende',
+    style: "Grande taille, allonge, frappe très plate.",
+    regarder: "L'extension complète du bras à l'impact." },
+  { nom: 'Iga Świątek', main: 'right', revers: 'deux', sexe: 'f', epoque: 'actuel',
+    style: "Coup droit très lifté, jeu de fond de court très mobile.",
+    regarder: "La rotation des hanches avant celle des épaules sur le coup droit." },
+  { nom: 'Aryna Sabalenka', main: 'right', revers: 'deux', sexe: 'f', epoque: 'actuel',
+    style: "Frappe plate et très puissante des deux côtés.",
+    regarder: "Le transfert du poids vers l'avant, très net sur le coup droit." },
+  { nom: 'Coco Gauff', main: 'right', revers: 'deux', sexe: 'f', epoque: 'actuel',
+    style: "Revers à deux mains très solide, vitesse de déplacement.",
+    regarder: "Le revers croisé court, joué avec un angle très fermé." },
+  { nom: 'Simona Halep', main: 'right', revers: 'deux', sexe: 'f', epoque: 'legende',
+    style: "Prise de balle tôt, régularité, petit gabarit.",
+    regarder: "La position sur la ligne de fond, jamais reculée." },
+  { nom: 'Maria Sharapova', main: 'right', revers: 'deux', sexe: 'f', epoque: 'legende',
+    style: "Frappe plate et longue, jeu d'agression permanente.",
+    regarder: "La longueur du geste d'accompagnement, très marquée." },
+  { nom: 'Kim Clijsters', main: 'right', revers: 'deux', sexe: 'f', epoque: 'legende',
+    style: "Défense en glissade, souplesse exceptionnelle.",
+    regarder: "La glissade en défense, y compris sur surface dure." },
+  { nom: 'Naomi Osaka', main: 'right', revers: 'deux', sexe: 'f', epoque: 'actuel',
+    style: "Service puissant, frappe plate depuis le fond.",
+    regarder: "Le lancer de balle au service, remarquablement constant." },
+  { nom: 'Elena Rybakina', main: 'right', revers: 'deux', sexe: 'f', epoque: 'actuel',
+    style: "Service et frappe très purs, économie de mouvement.",
+    regarder: "Le geste de service, court et sans temps mort." },
+  { nom: 'Mirra Andreeva', main: 'right', revers: 'deux', sexe: 'f', epoque: 'actuel',
+    style: "Jeune joueuse très complète, bonne lecture du jeu.",
+    regarder: "L'anticipation : elle est en mouvement avant la frappe adverse." },
+];
+
+/**
+ * Sélection des modèles correspondant à un profil, du plus proche au plus lointain.
+ * On ne se contente pas de filtrer : à l'intérieur d'un même niveau de correspondance, on
+ * alterne joueurs d'aujourd'hui et joueurs historiques, hommes et femmes. Sans cet
+ * entrelacement, les douze premiers noms d'un droitier à deux mains seraient douze hommes
+ * des années 2000 — une liste longue mais pauvre.
+ */
+function modelesPour({ main, revers } = {}, max = 12) {
+  const m = (main === 'left' || main === 'right') ? main : null;
+  const r = (revers === 'une' || revers === 'deux') ? revers : null;
+  const rang = (j) => {
+    if (m && r) return (j.main === m && j.revers === r) ? 0 : j.main === m ? 1 : j.revers === r ? 2 : 3;
+    if (m) return j.main === m ? 0 : 2;
+    if (r) return j.revers === r ? 0 : 2;
+    return 0;
+  };
+
+  // Un panier par (rang, sexe, époque). Les rangs sont épuisés dans l'ordre : on ne propose
+  // un profil moins ressemblant qu'une fois tous les modèles exacts déjà donnés.
+  const paniers = new Map();
+  MODELES.forEach((j, i) => {
+    const rg = rang(j);
+    const cle = `${rg}|${j.sexe}|${j.epoque}`;
+    if (!paniers.has(cle)) paniers.set(cle, []);
+    paniers.get(cle).push({ ...j, correspondance: rg, ordre: i });
+  });
+
+  const sortie = [];
+  for (let rg = 0; rg <= 3 && sortie.length < max; rg++) {
+    const duRang = [...paniers.entries()]
+      .filter(([cle]) => Number(cle.split('|')[0]) === rg)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, v]) => v);
+    // Tour de table entre hommes / femmes et actuels / historiques du même rang.
+    for (let tour = 0; sortie.length < max; tour++) {
+      let servi = false;
+      for (const panier of duRang) {
+        if (tour >= panier.length) continue;
+        sortie.push(panier[tour]);
+        servi = true;
+        if (sortie.length >= max) break;
+      }
+      if (!servi) break;
+    }
+  }
+  return sortie.sort((a, b) => a.correspondance - b.correspondance || a.ordre - b.ordre);
+}
+
+/** Recherche vidéo ciblée sur un joueur et, si on le connaît, sur le coup travaillé. */
+function requeteModele(joueur, coup) {
+  const nom = typeof joueur === 'string' ? joueur : joueur.nom;
+  const c = String(coup || '').toLowerCase();
+  const geste = c.includes('service') ? 'service'
+    : c.includes('volée') || c.includes('volee') ? 'volée'
+      : c.includes('revers') ? 'revers'
+        : c.includes('coup droit') ? 'coup droit' : '';
+  return `${nom} ${geste} ralenti technique`.replace('  ', ' ');
+}
+
+const LIBELLE_MAIN = { left: 'gaucher', right: 'droitier' };
+const LIBELLE_REVERS = { une: 'revers à une main', deux: 'revers à deux mains' };
 
 /** Chaînes d'enseignement reconnues, à parcourir quand on veut creuser un thème. */
 const CHAINES_VIDEO = [
@@ -4192,6 +4559,12 @@ $('#btn-reset').addEventListener('click', () => {
 
 $('#btn-aide').addEventListener('click', () => $('#dlg-aide').showModal());
 
+// Changer de main ou de type de revers change la liste des joueurs à regarder : la fiche
+// se refait aussitôt, sinon le joueur voit des modèles qui ne le concernent plus.
+for (const id of ['#opt-main', '#opt-revers']) {
+  $(id).addEventListener('change', () => rendreFondamentaux($('#vue-fondamentaux')));
+}
+
 /* ------------------------------------------------------------------ */
 /* Squelette sur la vidéo                                              */
 /* ------------------------------------------------------------------ */
@@ -4395,7 +4768,7 @@ function lienVideo(requete, texte = 'Voir des vidéos') {
   return a;
 }
 
-function carteConstat(c) {
+function carteConstat(c, main) {
   const classes = { bon: 'bon', corriger: 'corriger', priorite: 'priorite', info: '' };
   const node = el('div', `constat ${classes[c.niveau] ?? ''}`);
   const badge = c.coup ? `<span class="badge">${echapper(c.coup)}</span>` : '';
@@ -4410,7 +4783,7 @@ function carteConstat(c) {
   }
   // Un défaut nommé se corrige mieux en le voyant faire — mais seulement si une recherche
   // vidéo pertinente existe pour lui : mieux vaut pas de lien qu'un lien hors sujet.
-  const v = videoConstat(c.titre, c.coup);
+  const v = videoConstat(c.titre, c.coup, main);
   if (v) node.appendChild(lienVideo(v.requete, 'Voir des vidéos sur ce point'));
   return node;
 }
@@ -4423,7 +4796,7 @@ function rendreSynthese(a) {
     vue.appendChild(el('p', 'erreur',
       "Aucune frappe n'a été détectée sur cette séquence. Le détail juste en dessous dit " +
       "exactement ce qui a été vu, et quoi essayer."));
-    a.constats.forEach((c) => vue.appendChild(carteConstat(c)));
+    a.constats.forEach((c) => vue.appendChild(carteConstat(c, a.profil?.main)));
     return;
   }
 
@@ -4473,7 +4846,7 @@ function rendreSynthese(a) {
     const liste = a.constats.filter((c) => c.niveau === niveau);
     if (!liste.length) continue;
     vue.appendChild(el('h3', null, echapper(titre)));
-    liste.forEach((c) => vue.appendChild(carteConstat(c)));
+    liste.forEach((c) => vue.appendChild(carteConstat(c, a.profil?.main)));
   }
 
   vue.appendChild(el('p', 'note',
@@ -4548,7 +4921,7 @@ function rendreCoups(a) {
       return;
     }
     zoneComparaison.appendChild(el('h3', null, 'Ce que disent tes balles'));
-    constats.forEach((c) => zoneComparaison.appendChild(carteConstat(c)));
+    constats.forEach((c) => zoneComparaison.appendChild(carteConstat(c, etat.analyse?.profil?.main)));
     zoneComparaison.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
 
@@ -4746,7 +5119,7 @@ function rendreMesures(a) {
           `(${echapper(libelleZone(seuil, def.unite))}). Rien à changer ici.</p>`;
       }
       if (def.exercice) corps.innerHTML += `<p class="exo"><strong>Exercice :</strong> ${echapper(def.exercice)}</p>`;
-      corps.appendChild(lienVideo(adapterRequete(def.requeteVideo, g.libelle), 'Voir des vidéos sur ce point'));
+      corps.appendChild(lienVideo(adapterRequete(def.requeteVideo, g.libelle, a.profil?.main), 'Voir des vidéos sur ce point'));
       carte.appendChild(corps);
       vue.appendChild(carte);
     }
@@ -5155,7 +5528,7 @@ function rendreBilan() {
 
       if (it.detail) carte.appendChild(el('p', null, echapper(it.detail)));
       if (it.exo && !it.bon) carte.appendChild(el('p', 'exo', `<strong>Exercice :</strong> ${echapper(it.exo)}`));
-      const v = videoConstat(it.titre, it.coup);
+      const v = videoConstat(it.titre, it.coup, lireProfil().main);
       if (v && !it.bon && it.statut !== 'regle') {
         carte.appendChild(lienVideo(v.requete, 'Voir des vidéos sur ce point'));
       }
@@ -5233,8 +5606,77 @@ function exporterRapport(a) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/**
+ * Les modèles à regarder, choisis selon la main et le type de revers. Regarder un droitier
+ * quand on est gaucher oblige à tout inverser mentalement, et un revers à une main ne
+ * s'apprend pas sur un revers à deux mains : proposer un seul nom générique ne sert à rien.
+ */
+function blocModeles(profil) {
+  const bloc = el('section', 'modeles');
+  bloc.appendChild(el('h3', null, 'Des joueurs qui jouent comme toi'));
+  bloc.appendChild(el('p', 'note',
+    "Regarder un droitier quand on est gaucher oblige à inverser mentalement chaque appui et "
+    + "chaque rotation, et un revers à une main ne s'apprend pas sur un revers à deux mains. "
+    + "Dis qui tu es, la liste s'adapte."));
+
+  // Les menus de la partie « Analyser » ne sont visibles qu'une fois une vidéo chargée :
+  // cette fiche se lit avant d'avoir filmé, elle pose donc la question elle-même. Les deux
+  // endroits restent synchronisés, pour ne jamais demander deux fois la même chose.
+  const choix = el('div', 'choix-modeles');
+  const faireSelect = (id, options, valeur) => {
+    const sel = el('select');
+    sel.id = id;
+    sel.innerHTML = options.map(([v, t]) =>
+      `<option value="${v}"${v === valeur ? ' selected' : ''}>${t}</option>`).join('');
+    return sel;
+  };
+  const selMain = faireSelect('modeles-main',
+    [['right', 'Droitier'], ['left', 'Gaucher']], profil.main === 'left' ? 'left' : 'right');
+  const selRevers = faireSelect('modeles-revers',
+    [['deux', 'Revers 2 mains'], ['une', 'Revers 1 main']], profil.revers === 'une' ? 'une' : 'deux');
+  for (const [sel, cible] of [[selMain, '#opt-main'], [selRevers, '#opt-revers']]) {
+    sel.addEventListener('change', () => {
+      $(cible).value = sel.value;
+      rendreFondamentaux($('#vue-fondamentaux'));
+    });
+    choix.appendChild(sel);
+  }
+  bloc.appendChild(choix);
+
+  const main = selMain.value, revers = selRevers.value;
+  const liste = modelesPour({ main, revers }, 12);
+  const exacts = liste.filter((j) => !j.correspondance).length;
+
+  // Certains profils sont rares — un gaucher à une main n'a pas douze modèles exacts au monde.
+  // Le dire plutôt que de faire passer un profil voisin pour un profil identique.
+  if (exacts < liste.length) {
+    bloc.appendChild(el('p', 'note',
+      `Ton profil est rare : ${exacts} joueur(s) de cette liste jouent exactement comme toi. `
+      + 'Les suivants, en gris, partagent la main ou le type de revers, mais pas les deux.'));
+  }
+
+  const grille = el('div', 'grille-modeles');
+  for (const j of liste) {
+    const carte = el('article', `modele${j.correspondance ? ' proche' : ''}`);
+    carte.appendChild(el('h4', null, echapper(j.nom)));
+    carte.appendChild(el('p', 'modele-profil',
+      `${LIBELLE_MAIN[j.main]} · ${LIBELLE_REVERS[j.revers]}`
+      + (j.correspondance ? ' · profil voisin' : '')));
+    carte.appendChild(el('p', 'modele-style', echapper(j.style)));
+    carte.appendChild(el('p', 'modele-regarder', `<strong>À observer :</strong> ${echapper(j.regarder)}`));
+    carte.appendChild(lienVideo(requeteModele(j, profil.coup), 'Voir ses vidéos'));
+    grille.appendChild(carte);
+  }
+  bloc.appendChild(grille);
+  return bloc;
+}
+
 function rendreFondamentaux(cible) {
   cible.innerHTML = '';
+  const profil = lireProfil();
+  cible.appendChild(blocModeles(profil));
+  const gaucher = $('#modeles-main')?.value === 'left';
+
   for (const f of FONDAMENTAUX) {
     const d = el('details', 'fond');
     d.innerHTML = `
@@ -5245,10 +5687,19 @@ function rendreFondamentaux(cible) {
       <strong>Erreurs fréquentes</strong>
       <ul>${f.erreurs.map((p) => `<li>${echapper(p)}</li>`).join('')}</ul>`;
 
+    if (gaucher && f.gaucher?.length) {
+      d.appendChild(el('strong', 'gaucher-titre', 'Si tu es gaucher'));
+      const ul = el('ul', 'gaucher');
+      ul.innerHTML = f.gaucher.map((g) => `<li>${echapper(g)}</li>`).join('');
+      d.appendChild(ul);
+    }
+
     if (f.videos?.length) {
       d.appendChild(el('strong', null, 'À regarder en vidéo'));
       const liens = el('div', 'liste-videos');
-      for (const v of f.videos) liens.appendChild(lienVideo(v.requete, v.titre));
+      for (const v of f.videos) {
+        liens.appendChild(lienVideo(adapterRequete(v.requete, null, gaucher ? 'left' : 'right'), v.titre));
+      }
       d.appendChild(liens);
     }
     cible.appendChild(d);

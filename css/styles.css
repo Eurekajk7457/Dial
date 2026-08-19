@@ -638,3 +638,34 @@ details.protocole button { min-height: 38px; }
 .conformite.ko { border-left-color: var(--priorite); background: var(--priorite-fond); }
 .conformite .c-titre { margin: 0; font-weight: 600; }
 .conformite ul { margin: .35rem 0 0; padding-left: 1.1rem; color: var(--txt2); }
+
+/* --- Joueurs de référence ------------------------------------------------------------ */
+/* Une carte par modèle. Ceux qui correspondent exactement au profil sont marqués d'un
+   liseré vert ; ceux d'un profil voisin restent neutres, pour qu'on voie d'un coup d'œil
+   lesquels jouent vraiment du même côté que soi. */
+.modeles { margin-bottom: 26px; }
+.grille-modeles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.modele {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--primaire);
+  border-radius: var(--radius-s);
+  padding: 11px 13px;
+  background: var(--surface);
+}
+.modele.proche { border-left-color: var(--line-forte); background: var(--surface-2); }
+.modele h4 { margin: 0 0 2px; font-size: 15px; }
+.modele-profil { margin: 0 0 7px; font-size: 12px; color: var(--txt2); }
+.modele-style, .modele-regarder { margin: 0 0 7px; font-size: 13.5px; line-height: 1.45; }
+.modele .lien-yt { font-size: 13.5px; }
+
+/* Repères propres au gaucher, à l'intérieur d'une fiche technique. */
+.gaucher-titre { display: block; margin-top: 12px; }
+ul.gaucher { margin: 4px 0 0; }
+ul.gaucher li { margin-bottom: 4px; }
+.choix-modeles { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.choix-modeles select { flex: 1 1 150px; min-height: var(--touche); }

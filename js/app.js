@@ -8,6 +8,7 @@ import {
 } from './analyse.js';
 import {
   FONDAMENTAUX, RESSOURCES, RESULTATS_BALLE, PRISES,
+  modelesPour, requeteModele, LIBELLE_MAIN, LIBELLE_REVERS,
   EXPLICATIONS, CHAINES_VIDEO, videoYouTube, videoConstat, adapterRequete, libelleZone,
 } from './knowledge.js';
 import {
@@ -207,6 +208,12 @@ $('#btn-reset').addEventListener('click', () => {
 });
 
 $('#btn-aide').addEventListener('click', () => $('#dlg-aide').showModal());
+
+// Changer de main ou de type de revers change la liste des joueurs à regarder : la fiche
+// se refait aussitôt, sinon le joueur voit des modèles qui ne le concernent plus.
+for (const id of ['#opt-main', '#opt-revers']) {
+  $(id).addEventListener('change', () => rendreFondamentaux($('#vue-fondamentaux')));
+}
 
 /* ------------------------------------------------------------------ */
 /* Squelette sur la vidéo                                              */
@@ -411,7 +418,7 @@ function lienVideo(requete, texte = 'Voir des vidéos') {
   return a;
 }
 
-function carteConstat(c) {
+function carteConstat(c, main) {
   const classes = { bon: 'bon', corriger: 'corriger', priorite: 'priorite', info: '' };
   const node = el('div', `constat ${classes[c.niveau] ?? ''}`);
   const badge = c.coup ? `<span class="badge">${echapper(c.coup)}</span>` : '';
@@ -426,7 +433,7 @@ function carteConstat(c) {
   }
   // Un défaut nommé se corrige mieux en le voyant faire — mais seulement si une recherche
   // vidéo pertinente existe pour lui : mieux vaut pas de lien qu'un lien hors sujet.
-  const v = videoConstat(c.titre, c.coup);
+  const v = videoConstat(c.titre, c.coup, main);
   if (v) node.appendChild(lienVideo(v.requete, 'Voir des vidéos sur ce point'));
   return node;
 }
@@ -439,7 +446,7 @@ function rendreSynthese(a) {
     vue.appendChild(el('p', 'erreur',
       "Aucune frappe n'a été détectée sur cette séquence. Le détail juste en dessous dit " +
       "exactement ce qui a été vu, et quoi essayer."));
-    a.constats.forEach((c) => vue.appendChild(carteConstat(c)));
+    a.constats.forEach((c) => vue.appendChild(carteConstat(c, a.profil?.main)));
     return;
   }
 
@@ -489,7 +496,7 @@ function rendreSynthese(a) {
     const liste = a.constats.filter((c) => c.niveau === niveau);
     if (!liste.length) continue;
     vue.appendChild(el('h3', null, echapper(titre)));
-    liste.forEach((c) => vue.appendChild(carteConstat(c)));
+    liste.forEach((c) => vue.appendChild(carteConstat(c, a.profil?.main)));
   }
 
   vue.appendChild(el('p', 'note',
@@ -564,7 +571,7 @@ function rendreCoups(a) {
       return;
     }
     zoneComparaison.appendChild(el('h3', null, 'Ce que disent tes balles'));
-    constats.forEach((c) => zoneComparaison.appendChild(carteConstat(c)));
+    constats.forEach((c) => zoneComparaison.appendChild(carteConstat(c, etat.analyse?.profil?.main)));
     zoneComparaison.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
 
@@ -762,7 +769,7 @@ function rendreMesures(a) {
           `(${echapper(libelleZone(seuil, def.unite))}). Rien à changer ici.</p>`;
       }
       if (def.exercice) corps.innerHTML += `<p class="exo"><strong>Exercice :</strong> ${echapper(def.exercice)}</p>`;
-      corps.appendChild(lienVideo(adapterRequete(def.requeteVideo, g.libelle), 'Voir des vidéos sur ce point'));
+      corps.appendChild(lienVideo(adapterRequete(def.requeteVideo, g.libelle, a.profil?.main), 'Voir des vidéos sur ce point'));
       carte.appendChild(corps);
       vue.appendChild(carte);
     }
@@ -1171,7 +1178,7 @@ function rendreBilan() {
 
       if (it.detail) carte.appendChild(el('p', null, echapper(it.detail)));
       if (it.exo && !it.bon) carte.appendChild(el('p', 'exo', `<strong>Exercice :</strong> ${echapper(it.exo)}`));
-      const v = videoConstat(it.titre, it.coup);
+      const v = videoConstat(it.titre, it.coup, lireProfil().main);
       if (v && !it.bon && it.statut !== 'regle') {
         carte.appendChild(lienVideo(v.requete, 'Voir des vidéos sur ce point'));
       }
@@ -1249,8 +1256,77 @@ function exporterRapport(a) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/**
+ * Les modèles à regarder, choisis selon la main et le type de revers. Regarder un droitier
+ * quand on est gaucher oblige à tout inverser mentalement, et un revers à une main ne
+ * s'apprend pas sur un revers à deux mains : proposer un seul nom générique ne sert à rien.
+ */
+function blocModeles(profil) {
+  const bloc = el('section', 'modeles');
+  bloc.appendChild(el('h3', null, 'Des joueurs qui jouent comme toi'));
+  bloc.appendChild(el('p', 'note',
+    "Regarder un droitier quand on est gaucher oblige à inverser mentalement chaque appui et "
+    + "chaque rotation, et un revers à une main ne s'apprend pas sur un revers à deux mains. "
+    + "Dis qui tu es, la liste s'adapte."));
+
+  // Les menus de la partie « Analyser » ne sont visibles qu'une fois une vidéo chargée :
+  // cette fiche se lit avant d'avoir filmé, elle pose donc la question elle-même. Les deux
+  // endroits restent synchronisés, pour ne jamais demander deux fois la même chose.
+  const choix = el('div', 'choix-modeles');
+  const faireSelect = (id, options, valeur) => {
+    const sel = el('select');
+    sel.id = id;
+    sel.innerHTML = options.map(([v, t]) =>
+      `<option value="${v}"${v === valeur ? ' selected' : ''}>${t}</option>`).join('');
+    return sel;
+  };
+  const selMain = faireSelect('modeles-main',
+    [['right', 'Droitier'], ['left', 'Gaucher']], profil.main === 'left' ? 'left' : 'right');
+  const selRevers = faireSelect('modeles-revers',
+    [['deux', 'Revers 2 mains'], ['une', 'Revers 1 main']], profil.revers === 'une' ? 'une' : 'deux');
+  for (const [sel, cible] of [[selMain, '#opt-main'], [selRevers, '#opt-revers']]) {
+    sel.addEventListener('change', () => {
+      $(cible).value = sel.value;
+      rendreFondamentaux($('#vue-fondamentaux'));
+    });
+    choix.appendChild(sel);
+  }
+  bloc.appendChild(choix);
+
+  const main = selMain.value, revers = selRevers.value;
+  const liste = modelesPour({ main, revers }, 12);
+  const exacts = liste.filter((j) => !j.correspondance).length;
+
+  // Certains profils sont rares — un gaucher à une main n'a pas douze modèles exacts au monde.
+  // Le dire plutôt que de faire passer un profil voisin pour un profil identique.
+  if (exacts < liste.length) {
+    bloc.appendChild(el('p', 'note',
+      `Ton profil est rare : ${exacts} joueur(s) de cette liste jouent exactement comme toi. `
+      + 'Les suivants, en gris, partagent la main ou le type de revers, mais pas les deux.'));
+  }
+
+  const grille = el('div', 'grille-modeles');
+  for (const j of liste) {
+    const carte = el('article', `modele${j.correspondance ? ' proche' : ''}`);
+    carte.appendChild(el('h4', null, echapper(j.nom)));
+    carte.appendChild(el('p', 'modele-profil',
+      `${LIBELLE_MAIN[j.main]} · ${LIBELLE_REVERS[j.revers]}`
+      + (j.correspondance ? ' · profil voisin' : '')));
+    carte.appendChild(el('p', 'modele-style', echapper(j.style)));
+    carte.appendChild(el('p', 'modele-regarder', `<strong>À observer :</strong> ${echapper(j.regarder)}`));
+    carte.appendChild(lienVideo(requeteModele(j, profil.coup), 'Voir ses vidéos'));
+    grille.appendChild(carte);
+  }
+  bloc.appendChild(grille);
+  return bloc;
+}
+
 function rendreFondamentaux(cible) {
   cible.innerHTML = '';
+  const profil = lireProfil();
+  cible.appendChild(blocModeles(profil));
+  const gaucher = $('#modeles-main')?.value === 'left';
+
   for (const f of FONDAMENTAUX) {
     const d = el('details', 'fond');
     d.innerHTML = `
@@ -1261,10 +1337,19 @@ function rendreFondamentaux(cible) {
       <strong>Erreurs fréquentes</strong>
       <ul>${f.erreurs.map((p) => `<li>${echapper(p)}</li>`).join('')}</ul>`;
 
+    if (gaucher && f.gaucher?.length) {
+      d.appendChild(el('strong', 'gaucher-titre', 'Si tu es gaucher'));
+      const ul = el('ul', 'gaucher');
+      ul.innerHTML = f.gaucher.map((g) => `<li>${echapper(g)}</li>`).join('');
+      d.appendChild(ul);
+    }
+
     if (f.videos?.length) {
       d.appendChild(el('strong', null, 'À regarder en vidéo'));
       const liens = el('div', 'liste-videos');
-      for (const v of f.videos) liens.appendChild(lienVideo(v.requete, v.titre));
+      for (const v of f.videos) {
+        liens.appendChild(lienVideo(adapterRequete(v.requete, null, gaucher ? 'left' : 'right'), v.titre));
+      }
       d.appendChild(liens);
     }
     cible.appendChild(d);
