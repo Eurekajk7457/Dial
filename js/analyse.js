@@ -286,6 +286,13 @@ function quantile(triee, q) {
  */
 export const DETECTION_MINI_VERDICT = 0.7;
 
+/**
+ * Écart entre les deux poignets, en longueurs de tronc, sous lequel les deux mains tiennent
+ * le manche. Un revers à deux mains reste bien en dessous ; un coup droit, bras libre
+ * écarté, bien au-dessus.
+ */
+export const MAINS_JOINTES = 0.6;
+
 export const PLANCHER_STRICT = 2.2;
 export const PLANCHER_SOUPLE = 1.1;
 
@@ -423,7 +430,7 @@ export function detecterAngle(series) {
 const fenetre = (series, t0, t1) =>
   series.filter((s) => s.ok && s.t >= t0 && s.t <= t1);
 
-export function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
+export function mesurerFrappe(series, pic, main, coupImpose = 'auto', revers = 'deux') {
   const contact = series[pic.i];
   if (!contact?.ok) return null;
 
@@ -527,14 +534,38 @@ export function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
   // droits et des revers, l'app recopiait le menu déroulant et étiquetait tout pareil.
   // Le type déclaré reste celui qui fait foi — la reconnaissance 2D est fragile — mais un
   // désaccord fréquent est désormais signalé au joueur.
+  // Écart entre les deux poignets, en longueurs de tronc. Sur un revers à deux mains les
+  // deux mains tiennent le manche ; sur un coup droit le bras libre est écarté. Cette
+  // distance est la seule information de classement qui ne dépende ni de la main dominante,
+  // ni du côté d'où filme la caméra, ni du sens dans lequel le joueur est tourné — et elle
+  // survit à la confusion épaule gauche / épaule droite, qui est systématique quand le
+  // joueur est de profil : intervertir deux points ne change pas la distance entre eux.
+  // Le critère n'a de sens que si les deux poignets sont réellement vus : un poignet libre
+  // masqué par le corps est placé au jugé par le modèle de posture, souvent au milieu du
+  // tronc, ce qui simulerait un coup droit sur n'importe quel geste.
+  const deuxPoignetsVus = (contact.poignetG.v ?? 1) >= 0.5 && (contact.poignetD.v ?? 1) >= 0.5;
+  const ecartMains = (contact.tronc > 0.01 && deuxPoignetsVus)
+    ? dist(contact.poignetG, contact.poignetD) / contact.tronc : NaN;
+
   const auDessusTete = poignet.y < contact.nez.y;
-  let typeDetecte;
+  let typeDetecte, fiabiliteType;
   if (auDessusTete && hauteurImpact > 1.6) {
     typeDetecte = 'service';
+    fiabiliteType = 'haute';
   } else {
+    // Repère de secours, connu pour être fragile : de profil, le modèle de posture
+    // intervertit régulièrement les deux épaules et le côté du bras s'inverse avec elles.
     const coteBras = Math.sign(contact[cleEpaule].x - contact.hanches.x);
     const cotePoignet = Math.sign(poignet.x - contact.hanches.x);
-    const croise = coteBras !== 0 && cotePoignet !== 0 && coteBras !== cotePoignet;
+    let croise = coteBras !== 0 && cotePoignet !== 0 && coteBras !== cotePoignet;
+    fiabiliteType = 'basse';
+
+    // Quand le joueur joue son revers à deux mains, l'écart entre les mains tranche seul.
+    if (revers === 'deux' && Number.isFinite(ecartMains)) {
+      croise = ecartMains < MAINS_JOINTES;
+      fiabiliteType = 'haute';
+    }
+
     if (amplitudePrep < 0.85 && hauteurImpact > 0.1 && hauteurImpact < 1.4) {
       typeDetecte = croise ? 'volee-revers' : 'volee-coup-droit';
     } else {
@@ -561,6 +592,8 @@ export function mesurerFrappe(series, pic, main, coupImpose = 'auto') {
     hauteurBrasLibre,
     oscillation,
     typeDetecte,
+    fiabiliteType,
+    ecartMains,
     incertitudeCoude,
     busteImpact: contact.buste,
   };
@@ -625,6 +658,19 @@ export function medianeCaracteristique(valeurs, seuil) {
  * joueur. On compare donc l'incertitude d'échantillonnage à la largeur de la zone visée :
  * si elle en dépasse le tiers, le verdict ne mesurerait que le hasard.
  */
+/**
+ * Mesures dont le nuage est plus large que la zone à juger : leur médiane ne caractérise
+ * rien. Ni reproche, ni point fort, ni chiffre affiché comme s'il était net — et surtout pas
+ * de constat d'irrégularité fondé sur cette même dispersion, ce qui reviendrait à affirmer
+ * et à suspendre la même chose dans le même rapport.
+ */
+export function mesuresNonCaracterisables(frappes, type, revers = 'deux') {
+  return Object.keys(SEUILS_REGULARITE).filter((cle) => {
+    const seuil = seuilPour(cle, type, revers);
+    return seuil && !medianeCaracteristique(frappes.map((f) => f[cle]), seuil).significative;
+  });
+}
+
 export function coudeMesurable(incertitude, seuil) {
   if (!Number.isFinite(incertitude) || !seuil) return true;
   const largeurZone = seuil.ideal[1] - seuil.ideal[0];
@@ -635,13 +681,17 @@ export function coudeMesurable(incertitude, seuil) {
  * Juge une frappe mesure par mesure : c'est ce qui permet de dire, frappe par frappe,
  * ce qui va et ce qui ne va pas — plutôt que d'afficher une colonne de chiffres nus.
  */
-export function verdictsFrappe(frappe, revers = 'deux') {
+export function verdictsFrappe(frappe, revers = 'deux', nonCaracterisables = []) {
   const type = frappe.type;
   return mesuresJugeables(type).map((cle) => {
     const def = EXPLICATIONS.find((e) => e.cle === cle);
     const seuil = seuilPour(cle, type, revers);
     // Mesure que la cadence d'échantillonnage ne permet pas de trancher : on se tait.
     if (cle === 'coudeImpact' && !coudeMesurable(frappe.incertitudeCoude, seuil)) return null;
+    // Mesure dont le nuage, sur l'ensemble des frappes, dépasse la zone à juger : le rapport
+    // ne peut pas la déclarer incaractérisable d'un côté et la noter frappe par frappe de
+    // l'autre. Le doute vaut pour tout le rapport, pas seulement pour la page des mesures.
+    if (nonCaracterisables.includes(cle)) return null;
     if (!def || !seuil) return null;
 
     const valeur = frappe[cle];
@@ -679,7 +729,16 @@ function reglesGroupe(type, frappes, profil = {}) {
   const n = frappes.length;
   const libelle = LIBELLES_COUP[type] || type;
   const med = (cle) => mediane(frappes.map((f) => f[cle]));
-  const est = (cle, seuil) => evaluer(med(cle), seuil, incertitudePour(cle, n));
+
+  // Une médiane ne vaut que si elle caractérise le nuage. Quand la dispersion dépasse la
+  // largeur de la zone à juger, la médiane ne désigne plus rien : ni reproche, ni point fort.
+  // Ce contrôle ne s'appliquait qu'au coude — les autres mesures subissent pourtant
+  // exactement le même échantillonnage, et étaient livrées sans aucune réserve.
+  const nonCaracterisables = new Set(mesuresNonCaracterisables(frappes, type, revers));
+
+  const est = (cle, seuil) => (nonCaracterisables.has(cle)
+    ? { niveau: 'inconnu', sens: 0, raison: 'dispersion' }
+    : evaluer(med(cle), seuil, incertitudePour(cle, n)));
 
   const service = type === 'service';
   const volee = type.startsWith('volee');
@@ -791,8 +850,11 @@ function reglesGroupe(type, frappes, profil = {}) {
         `Annoncer une valeur moyenne n'aurait pas de sens : ce n'est pas un angle, c'est un nuage. ` +
         `Cet écart peut venir de ton geste comme de la cadence d'analyse — à 20 images/seconde, ` +
         `le coude bouge beaucoup entre deux images.`,
-      exo: "Relance à 30 images/seconde : si l'écart se réduit nettement, il venait de la mesure. " +
-        "S'il persiste, c'est ton geste qui varie, et c'est alors la régularité qu'il faut travailler.",
+      exo: "Refilme la même séquence en ralenti (mode 120 ou 240 images/seconde de ton téléphone), " +
+        "puis relance l'analyse à la cadence la plus haute proposée. Passer à 30 images/seconde ne " +
+        "suffit pas : l'écart y baisserait d'environ un tiers, assez peu pour te faire conclure à tort " +
+        "« ça persiste, c'est donc mon geste ». À 120 images/seconde, si l'écart s'effondre il venait " +
+        "de la mesure ; s'il tient, c'est ton geste, et c'est alors la régularité qu'il faut travailler.",
     });
   } else if (!coudeMesurable(incertitudeCoude, seuilCoude)) {
     // Se taire vaut mieux que trancher au hasard : à cette cadence, l'angle relevé à
@@ -919,11 +981,20 @@ function reglesGroupe(type, frappes, profil = {}) {
 
   /* --- Régularité d'une frappe à l'autre --- */
   if (n >= 3) {
+    const ecartes = [];
     const mesures = Object.entries(SEUILS_REGULARITE).map(([cle, def]) => {
       // Une irrégularité inférieure à l'erreur de mesure ne mesure pas le joueur.
       // Le coude balaie des dizaines de degrés entre deux images : à cette cadence,
       // annoncer « ± 36° d'irrégularité » reviendrait à chiffrer le hasard.
       if (cle === 'coudeImpact' && !coudeMesurable(incertitudeCoude, seuilCoude)) {
+        return { cle, ...def, et: NaN, etat: 'inconnu', exces: NaN };
+      }
+      // Contradiction à éviter : on ne peut pas déclarer une mesure « trop dispersée pour
+      // être caractérisée », puis se servir de cette même dispersion pour affirmer que le
+      // joueur ne refait pas deux fois le même geste. Le premier constat dit qu'on ne sait
+      // pas encore ; le second trancherait. C'est le premier qui a raison.
+      if (nonCaracterisables.has(cle)) {
+        ecartes.push(def.libelle);
         return { cle, ...def, et: NaN, etat: 'inconnu', exces: NaN };
       }
       const et = ecartType(frappes.map((f) => f[cle]));
@@ -949,8 +1020,18 @@ function reglesGroupe(type, frappes, profil = {}) {
         niveau: grave ? 'priorite' : 'corriger',
         titre: 'Frappes trop irrégulières',
         detail: `D'une frappe à l'autre, ce qui bouge le plus : ${pires.slice(0, 2).map(format).join(', ')}. ` +
-          `Sur ${n} frappes du même coup, ces écarts veulent dire que tu ne refais pas deux fois le même geste — c'est ce qui produit les fautes inexpliquées.`,
+          `Sur ${n} frappes du même coup, ces écarts veulent dire que tu ne refais pas deux fois le même geste — c'est ce qui produit les fautes inexpliquées.`
+          + (ecartes.length ? ` À noter : ${ecartes.join(' et ')} n'entre(nt) pas dans ce calcul — la dispersion y est trop forte pour qu'on sache encore si elle vient du geste ou de la mesure.` : ''),
         exo: `Série de 10 balles lentes, même hauteur, même cible, sans chercher la puissance : l'objectif est que les 10 se ressemblent. Compte celles qui « sonnent » pareil.`,
+      });
+    } else if (ecartes.length) {
+      // Toutes les mesures de régularité ont été écartées : on ne conclut rien, et on le dit.
+      ajouter({
+        niveau: 'info', coup: 'Mesure',
+        titre: 'Régularité du geste encore indéterminée',
+        detail: `La régularité ne peut pas être jugée sur ce coup : ${ecartes.join(' et ')} `
+          + `varie(nt) trop d'une frappe à l'autre pour qu'on sache si c'est ton geste ou la cadence `
+          + `d'analyse. Aucune conclusion sur la régularité tant que le test en ralenti n'a pas tranché.`,
       });
     }
   }
@@ -1071,8 +1152,14 @@ function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte
   // sur un échange contenant coups droits et revers, tout étiqueter pareil serait faux.
   if (frappes.length >= 4 && profil.coup && profil.coup !== 'auto') {
     const famille = (t) => String(t).replace(/^volee-/, '');
-    const desaccords = frappes.filter((f) => f.typeDetecte && famille(f.typeDetecte) !== famille(f.type));
-    const part = desaccords.length / frappes.length;
+    // On ne signale un mélange que si le classement repose sur le critère fiable — l'écart
+    // entre les deux mains. Le repère de secours, fondé sur le côté du bras, s'inverse quand
+    // le joueur est de profil : il a produit « 8 frappes sur 10 ressemblent à des coups
+    // droits » sur une série qui n'était que des revers. Une alerte fausse est pire que pas
+    // d'alerte : elle apprend à ignorer les alertes.
+    const fiables = frappes.filter((f) => f.fiabiliteType === 'haute');
+    const desaccords = fiables.filter((f) => f.typeDetecte && famille(f.typeDetecte) !== famille(f.type));
+    const part = fiables.length >= 4 ? desaccords.length / fiables.length : 0;
     if (part >= 0.35) {
       const compte = new Map();
       for (const f of desaccords) {
@@ -1081,12 +1168,15 @@ function reglesGlobales(frappes, duree, tauxDetection, profil = {}, mainSuspecte
       }
       const autre = [...compte.entries()].sort((a, b) => b[1] - a[1])[0];
       c.push({
-        niveau: 'corriger', coup: 'Réglage',
+        // Tant que le coup analysé est peut-être le mauvais, tout le reste du rapport est un
+        // commentaire sur le mauvais geste. C'est donc la priorité, avant toute technique.
+        niveau: 'priorite', coup: 'Réglage',
         titre: 'La séquence ne contient sans doute pas que ce coup',
         detail: `Tu as déclaré « ${LIBELLES_COUP[profil.coup] || profil.coup} », et toutes les frappes ` +
-          `sont analysées comme telles. Or ${desaccords.length} frappe(s) sur ${frappes.length} ressemblent ` +
+          `sont analysées comme telles. Or ${desaccords.length} frappe(s) sur ${fiables.length} ressemblent ` +
           `plutôt à « ${LIBELLES_COUP[autre[0]] || autre[0]} ». Les repères techniques diffèrent d'un coup ` +
-          `à l'autre : mélangés, les constats perdent de leur sens.`,
+          `à l'autre : mélangés, les constats perdent de leur sens. Tant que ce point n'est pas réglé, ` +
+          `lis le reste du rapport avec réserve : il peut porter sur un autre coup que celui que tu crois.`,
         exo: "Découpe ta vidéo pour n'analyser qu'un seul type de coup à la fois (réglages avancés : " +
           "début et durée), ou choisis « Un peu de tout, devine » pour laisser l'app classer chaque frappe.",
       });
@@ -1276,7 +1366,7 @@ export function analyser({ frames, largeur, hauteur, tauxDetection, fenetre = nu
   const diagnostic = diagnostiquerFrappes(series, vitesse);
 
   const frappes = pics
-    .map((pic) => mesurerFrappe(series, pic, mainDominante, coup))
+    .map((pic) => mesurerFrappe(series, pic, mainDominante, coup, profil.revers === 'une' ? 'une' : 'deux'))
     .filter(Boolean);
 
   // Filet de sécurité : si la main déclarée ne donne rien alors que l'autre bras frappe
@@ -1375,6 +1465,17 @@ export function analyser({ frames, largeur, hauteur, tauxDetection, fenetre = nu
         deplacementBassin: mediane(liste.map((f) => f.deplacementBassin)),
         vitesse: mediane(liste.map((f) => f.vitesse)),
       },
+      // Mesures dont le nuage dépasse la zone à juger : leur médiane ne caractérise rien et
+      // ne doit pas être affichée comme un chiffre net. Sans ce report jusqu'à l'affichage,
+      // l'app annonçait « coude incaractérisable » dans les constats et « coude 141° » deux
+      // écrans plus haut.
+      nonCaracterisables: mesuresNonCaracterisables(liste, type, profil.revers === 'une' ? 'une' : 'deux'),
+      // Dispersion de chaque mesure : conservée d'une séance à l'autre, elle permet de
+      // distinguer un geste qui varie d'une mesure qui bruite. Un geste ne devient pas plus
+      // irrégulier pendant que la détection s'améliore.
+      dispersions: Object.fromEntries(Object.keys(SEUILS_REGULARITE)
+        .map((cle) => [cle, ecartType(liste.map((f) => f[cle]))])
+        .filter(([, v]) => Number.isFinite(v))),
     })),
   };
 }

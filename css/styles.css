@@ -689,3 +689,6 @@ ul.gaucher li { margin-bottom: 4px; }
 .ref-comparable.moyen { color: var(--attention); }
 .ref-comparable.ko { color: var(--priorite); }
 .note.marge { font-size: 12.5px; }
+/* Mesure trop dispersée pour être jugée : ni verte ni rouge, explicitement en attente. */
+.mesure.incaracterisable { border-left: 3px solid var(--attention); }
+.mesure.incaracterisable .m-valeur { color: var(--txt2); }

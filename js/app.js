@@ -24,6 +24,7 @@ import {
   lireAnalyse, estRouvrable, actualiserResultats, bilanConstats, mesuresAJour,
   exporterHistorique, importerHistorique,
   empreinteFichier, trouverParEmpreinte,
+  dispersionSuspecte,
 } from './historique.js';
 
 /**
@@ -621,7 +622,8 @@ function rendreCoups(a) {
     infos.appendChild(el('h4', null, `${i + 1}. ${echapper(LIBELLES_COUP[f.type] || f.type)} — ${f.t.toFixed(1)} s`));
 
     // Le cœur de la carte : chaque mesure jugée, avec la raison en clair
-    const verdicts = verdictsFrappe(f, a.profil?.revers);
+    const groupe = a.groupes?.find((g) => g.type === f.type);
+    const verdicts = verdictsFrappe(f, a.profil?.revers, groupe?.nonCaracterisables || []);
     const bilan = verdicts.filter((v) => v.niveau !== 'bon');
     infos.appendChild(el('p', 'bilan-frappe', bilan.length
       ? `<strong>${bilan.length}</strong> point${bilan.length > 1 ? 's' : ''} à corriger sur cette frappe`
@@ -762,10 +764,15 @@ function rendreMesures(a) {
       if (def.seuil && !jugeables.includes(def.cle)) continue;   // sans objet pour ce coup
 
       const seuil = def.seuil ? seuilPour(def.cle, g.type) : null;
-      const dedans = seuil ? valeur >= seuil.ideal[0] && valeur <= seuil.ideal[1] : null;
+      // Mesure trop dispersée pour que sa médiane veuille dire quelque chose : on affiche la
+      // réserve à la place du chiffre, au lieu de la contredire deux écrans plus bas.
+      const incaracterisable = (g.nonCaracterisables || []).includes(def.cle);
+      const dedans = (seuil && !incaracterisable)
+        ? valeur >= seuil.ideal[0] && valeur <= seuil.ideal[1] : null;
 
-      const carte = el('details', `mesure ${dedans === null ? '' : dedans ? 'ok' : 'ko'}`);
-      const etat_ = dedans === null ? 'repère' : dedans ? 'dans la zone' : 'hors zone';
+      const carte = el('details', `mesure ${dedans === null ? '' : dedans ? 'ok' : 'ko'}${incaracterisable ? ' incaracterisable' : ''}`);
+      const etat_ = incaracterisable ? 'trop variable pour être jugée'
+        : dedans === null ? 'repère' : dedans ? 'dans la zone' : 'hors zone';
       // Sans seuil (la vitesse), annoncer une « zone à viser » n'aurait pas de sens.
       const fourchette = seuil
         ? `zone à viser : ${libelleZone(seuil, def.unite)}`
@@ -773,7 +780,7 @@ function rendreMesures(a) {
       carte.innerHTML = `<summary>
         <span class="m-ligne">
           <span class="m-nom">${echapper(def.libelle)}</span>
-          <span class="m-valeur">${echapper(valeur.toFixed(def.decimales) + def.unite)}</span>
+          <span class="m-valeur">${incaracterisable ? '—' : echapper(valeur.toFixed(def.decimales) + def.unite)}</span>
         </span>
         <span class="m-ligne m-bas">
           <span class="m-etat">${echapper(etat_)}</span>
@@ -781,7 +788,7 @@ function rendreMesures(a) {
         </span>
       </summary>`;
 
-      if (seuil) carte.appendChild(jauge(valeur, seuil, def.decimales, def.unite));
+      if (seuil && !incaracterisable) carte.appendChild(jauge(valeur, seuil, def.decimales, def.unite));
 
       const corps = el('div', 'm-corps');
       corps.innerHTML =
@@ -789,7 +796,28 @@ function rendreMesures(a) {
         `<p class="note">Échelle : ${echapper(def.echelle)}.</p>` +
         `<p><strong>Pourquoi ça compte.</strong> ${echapper(def.pourquoi)}</p>`;
 
-      if (seuil && !dedans) {
+      if (incaracterisable) {
+        corps.innerHTML += `<p class="m-diagnostic"><strong>Chez toi.</strong> Cette mesure varie `
+          + `trop d'une frappe à l'autre pour qu'une valeur moyenne veuille dire quelque chose : `
+          + `sur tes ${g.nombre} frappes, le nuage est plus large que la zone à viser. La médiane `
+          + `serait de ${echapper(valeur.toFixed(def.decimales) + def.unite)}, mais elle ne désigne rien. `
+          + `Aucun verdict n'est rendu tant que le test en ralenti n'a pas dit si cet écart vient `
+          + `de ton geste ou de la cadence d'analyse.</p>`;
+
+        // Argument décisif quand il est disponible : la dispersion a augmenté pendant que la
+        // détection s'améliorait. Un geste ne se dérègle pas au moment où la mesure se corrige.
+        const sus = dispersionSuspecte(g.type, def.cle);
+        if (sus) {
+          corps.innerHTML += `<p class="m-diagnostic"><strong>Un indice de plus.</strong> `
+            + `Depuis ta séance précédente, cet écart est passé de `
+            + `± ${echapper(sus.dispersionAvant.toFixed(def.decimales) + def.unite)} à `
+            + `± ${echapper(sus.dispersionApres.toFixed(def.decimales) + def.unite)}, alors que la `
+            + `détection du joueur s'améliorait de ${Math.round(sus.detectionAvant * 100)} % à `
+            + `${Math.round(sus.detectionApres * 100)} %. Un geste ne devient pas plus irrégulier `
+            + `au moment précis où la mesure devient plus fiable : cet écart vient très `
+            + `probablement de la mesure.</p>`;
+        }
+      } else if (seuil && !dedans) {
         const sens = valeur < seuil.ideal[0] ? 'tropBas' : 'tropHaut';
         corps.innerHTML += `<p class="m-diagnostic"><strong>Chez toi.</strong> ${echapper(def[sens])}</p>`;
       } else if (seuil) {

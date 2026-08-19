@@ -178,6 +178,7 @@ export function enregistrer(analyse, echantillon = null, empreinte = null) {
     },
     groupes: analyse.groupes.map((g) => ({
       type: g.type, libelle: g.libelle, nombre: g.nombre, medianes: g.medianes,
+      dispersions: g.dispersions || null, nonCaracterisables: g.nonCaracterisables || [],
     })),
   };
 
@@ -260,6 +261,35 @@ export function coupsPresents(liste = lireHistorique()) {
 }
 
 /** Points d'une mesure pour un type de coup donné, du plus ancien au plus récent. */
+/**
+ * Une dispersion qui augmente pendant que la détection s'améliore.
+ *
+ * Un geste ne devient pas plus irrégulier d'une séance à l'autre au moment précis où la
+ * mesure devient plus fiable. Quand les deux évoluent en sens contraire, l'explication la
+ * plus simple est que la dispersion vient de la mesure, pas du joueur. L'app ne peut pas le
+ * prouver, mais elle peut cesser de faire comme si elle ne le voyait pas.
+ */
+export function dispersionSuspecte(typeCoup, cle, liste = lireHistorique()) {
+  const avec = liste
+    .filter((e) => Number.isFinite(e.detail?.tauxDetection)
+      && Number.isFinite((e.groupes || []).find((g) => g.type === typeCoup)?.dispersions?.[cle]))
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  if (avec.length < 2) return null;
+
+  const [avant, apres] = avec.slice(-2);
+  const d = (e) => e.groupes.find((g) => g.type === typeCoup).dispersions[cle];
+  const dAvant = d(avant), dApres = d(apres);
+  const detAvant = avant.detail.tauxDetection, detApres = apres.detail.tauxDetection;
+
+  // Il faut que les deux bougent franchement, et en sens contraire.
+  if (!(dApres > dAvant * 1.1 && detApres > detAvant + 0.05)) return null;
+  return {
+    dispersionAvant: dAvant, dispersionApres: dApres,
+    detectionAvant: detAvant, detectionApres: detApres,
+    dateAvant: avant.date, dateApres: apres.date,
+  };
+}
+
 export function serie(mesure, typeCoup, liste = lireHistorique()) {
   const def = MESURES_SUIVIES.find((m) => m.cle === mesure);
   if (!def) return [];
