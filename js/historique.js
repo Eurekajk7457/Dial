@@ -152,6 +152,8 @@ export function enregistrer(analyse, echantillon = null, empreinte = null) {
     constats: analyse.constats || [],
     frappes: analyse.frappes.map((f) => {
       const garde = { t: f.t, type: f.type, resultat: f.resultat || '' };
+      if (f.typeDetecte) garde.typeDetecte = f.typeDetecte;
+      if (f.fiabiliteType) garde.fiabiliteType = f.fiabiliteType;
       for (const m of MESURES_FRAPPE) if (Number.isFinite(f[m])) garde[m] = f[m];
       return garde;
     }),

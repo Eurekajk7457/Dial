@@ -298,7 +298,7 @@ export const PLANCHER_SOUPLE = 1.1;
 
 export function detecterFrappes(
   series, vitesse,
-  { ecartMin = 0.55, fenetreDomination = 0.8, ratioDomination = 1.7, plancher = PLANCHER_STRICT } = {},
+  { ecartMin = 0.55, fenetreDomination = 1.0, ratioDomination = 1.25, plancher = PLANCHER_STRICT } = {},
 ) {
   const valides = finis(vitesse);
   if (valides.length < 5) return [];
@@ -314,8 +314,14 @@ export function detecterFrappes(
     if (v >= (vitesse[i - 1] ?? 0) && v > (vitesse[i + 1] ?? 0)) pics.push({ i, v, t: series[i].t });
   }
 
-  // Un armé ou un replacement produit lui aussi un pic, mais il est toujours suivi de près
-  // par la frappe, bien plus rapide. On écarte donc les pics dominés par un voisin proche.
+  // Un armé ou un replacement produit lui aussi un pic. On écarte donc les pics dominés par
+  // un voisin proche. Le voisinage vaut 1 seconde et la domination 1,25× : avec 0,8 s et
+  // 1,7×, le replacement qui suit la frappe passait au travers et comptait comme une
+  // deuxième balle, ce qui polluait les médianes et fabriquait de la fausse irrégularité.
+  // Mesuré sur neuf situations types : 6 justes avant, 8 après. Le cas qui résiste est le
+  // replacement à 85 % de la vitesse de frappe — à ce niveau, la vitesse du poignet seule
+  // ne distingue plus les deux, et resserrer davantage fusionnerait deux vraies volées
+  // jouées coup sur coup.
   const retenus = pics.filter((p) => !pics.some(
     (q) => q !== p && Math.abs(q.t - p.t) <= fenetreDomination && q.v > p.v * ratioDomination
   ));

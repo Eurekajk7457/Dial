@@ -75,9 +75,34 @@ export async function chargerDetecteur(onStatut = () => {}) {
   );
 }
 
+/**
+ * Attend qu'une image soit réellement disponible pour l'affichage.
+ *
+ * `seeked` signale que le déplacement est fait, pas que l'image correspondante est peinte.
+ * Copier la vidéo dans une toile juste après ramène donc parfois l'image précédente, selon
+ * la charge de la machine. Le même fichier analysé deux fois n'échantillonnait alors pas
+ * exactement les mêmes images, et pouvait produire un nombre de frappes différent.
+ * `requestVideoFrameCallback` ne se déclenche qu'une fois l'image prête ; à défaut, deux
+ * tours d'affichage donnent la même garantie de façon approchée.
+ */
+function imagePrete(video) {
+  return new Promise((resolve) => {
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      let rendu = false;
+      const fini = () => { if (!rendu) { rendu = true; resolve(); } };
+      video.requestVideoFrameCallback(fini);
+      // Filet de sécurité : sur une vidéo en pause, certains navigateurs n'appellent jamais
+      // ce rappel. Sans lui, l'analyse resterait bloquée sur une image.
+      setTimeout(fini, 60);
+      return;
+    }
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+}
+
 function chercher(video, t) {
   return new Promise((resolve, reject) => {
-    const ok = () => { nettoyer(); resolve(); };
+    const ok = () => { nettoyer(); imagePrete(video).then(resolve); };
     const ko = () => { nettoyer(); reject(new Error('Lecture vidéo impossible à ' + t.toFixed(2) + ' s')); };
     const nettoyer = () => {
       video.removeEventListener('seeked', ok);
